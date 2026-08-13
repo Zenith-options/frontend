@@ -7,7 +7,8 @@ import { WalletConnect } from "../../components/WalletConnect";
 import { usePositionsStore, aggregateGreeks, type Position } from "../../lib/store/positions";
 import { useAccountStore } from "../../lib/store/account";
 import { useHistoryStore } from "../../lib/store/history";
-import { MARKETS, bs, smileVol, fmtN } from "../../lib/pricing";
+import { MARKETS, EXPIRIES, bs, smileVol, fmtN, fmtK } from "../../lib/pricing";
+import { collateralRequired } from "../../lib/collateral";
 import { toCsv, downloadCsv } from "../../lib/csv";
 import { ExportButton } from "../../components/ExportButton";
 
@@ -26,9 +27,11 @@ interface Marked extends Position {
 export default function PortfolioPage() {
   const positions = usePositionsStore(s => s.positions);
   const closePosition = usePositionsStore(s => s.closePosition);
+  const addPosition = usePositionsStore(s => s.addPosition);
   const balance = useAccountStore(s => s.balance);
   const collateralLocked = useAccountStore(s => s.collateralLocked);
   const releaseCollateral = useAccountStore(s => s.releaseCollateral);
+  const reserveCollateral = useAccountStore(s => s.reserveCollateral);
   const credit = useAccountStore(s => s.credit);
   const debit = useAccountStore(s => s.debit);
   const addHistoryRecord = useHistoryStore(s => s.addRecord);
@@ -110,6 +113,9 @@ export default function PortfolioPage() {
   const handleCloseStrategy = (legs: Marked[]) => {
     for (const leg of legs) handleClose(leg);
   };
+
+  const [rollTargetId, setRollTargetId] = useState<number|null>(null);
+  const rollTarget = soloPositions.find(p => p.id === rollTargetId) ?? null;
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100vh",background:"var(--bg)",overflow:"hidden",fontFamily:"var(--font-sans)"}}>
@@ -254,7 +260,12 @@ export default function PortfolioPage() {
                           {p.pnl>=0?"+":"−"}${fmtN(Math.abs(p.pnl),2)} <span style={{opacity:0.6}}>({p.pnlPct>=0?"+":""}{p.pnlPct.toFixed(1)}%)</span>
                         </td>
                         <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>{(sign*p.liveDelta*p.contracts).toFixed(3)}</td>
-                        <td style={{padding:"6px 10px",textAlign:"right"}}>
+                        <td style={{padding:"6px 10px",textAlign:"right",whiteSpace:"nowrap"}}>
+                          <button onClick={()=>setRollTargetId(rollTargetId===p.id?null:p.id)} style={{
+                            fontSize:10,color:rollTargetId===p.id?"var(--brand)":"var(--text-lo)",background:"none",
+                            border:"1px solid var(--border-default)",padding:"2px 8px",cursor:"pointer",marginRight:6}}>
+                            Roll
+                          </button>
                           <button onClick={()=>handleClose(p)} style={{
                             fontSize:10,color:"var(--text-lo)",background:"none",border:"1px solid var(--border-default)",
                             padding:"2px 8px",cursor:"pointer"}}>
