@@ -14,6 +14,7 @@ import { collateralRequired } from "../../lib/collateral";
 import { useHistoryStore } from "../../lib/store/history";
 import { AlertsPanel } from "../../components/AlertsPanel";
 import { StarButton } from "../../components/StarButton";
+import { useWatchlistStore } from "../../lib/store/watchlist";
 import { StrategyPicker } from "../../components/StrategyPicker";
 import { MultiLegPayoffDiagram } from "../../components/MultiLegPayoffDiagram";
 import { type StrategyTemplate } from "../../lib/strategies";
@@ -43,6 +44,7 @@ function OptionsPageContent() {
   const reserveCollateral = useAccountStore(s=>s.reserveCollateral);
   const addHistoryRecord = useHistoryStore(s=>s.addRecord);
   const balance = useAccountStore(s=>s.balance);
+  const favorites = useWatchlistStore(s=>s.favorites);
   const [contracts, setContracts] = useState("1");
   const [viewTab, setViewTab] = useState<"chain"|"positions"|"strategies">("chain");
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyTemplate|null>(null);
@@ -58,6 +60,11 @@ function OptionsPageContent() {
     },1800);
     return ()=>clearInterval(id);
   },[sym,market.price]);
+
+  const sortedMarkets=useMemo(()=>[...MARKETS].sort((a,b)=>{
+    const aFav=favorites.includes(a.sym),bFav=favorites.includes(b.sym);
+    return aFav===bFav?0:aFav?-1:1;
+  }),[favorites]);
 
   const chain=useMemo(():ChainRow[]=>{
     return Array.from({length:21},(_,i)=>{
@@ -162,7 +169,7 @@ function OptionsPageContent() {
       {/* TOP BAR */}
       <AppHeader>
         <div style={{display:"flex",gap:1}}>
-          {MARKETS.map(m=>(
+          {sortedMarkets.map(m=>(
             <div key={m.sym} style={{display:"flex",alignItems:"center",
               background:sym===m.sym?"var(--bg-overlay)":"transparent",
               borderBottom:sym===m.sym?"2px solid var(--brand)":"2px solid transparent"}}>
