@@ -50,7 +50,7 @@ export function VolSmile({ spot, baseVol, width = 260, height = 110 }: VolSmileP
     }));
 
     return { pts, path, area, atmX, atmY, yLabels };
-  }, [spot, baseVol]);
+  }, [baseVol, W, H]);
 
   return (
     <div>

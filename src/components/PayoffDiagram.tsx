@@ -109,7 +109,7 @@ export function PayoffDiagram({
       yLabels, xLabels,
       maxLoss, breakeven, maxPnl,
     };
-  }, [spot, strike, premium, isCall, contracts]);
+  }, [spot, strike, premium, isCall, contracts, W, H]);
 
   const color = isCall ? "#5C9A6B" : "#B65640";
   const colorDim = isCall ? "rgba(92,154,107,0.15)" : "rgba(182,86,64,0.15)";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { PayoffDiagram } from "../../components/PayoffDiagram";
 import { VolSmile } from "../../components/VolSmile";
@@ -13,6 +13,14 @@ interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:b
 interface TradeState{row:ChainRow;side:"call"|"put";}
 
 export default function OptionsPage() {
+  return (
+    <Suspense fallback={null}>
+      <OptionsPageContent />
+    </Suspense>
+  );
+}
+
+function OptionsPageContent() {
   const params = useSearchParams();
   const [sym, setSym] = useState(params.get("u")??"XLM");
   const [expiry, setExpiry] = useState(EXPIRIES[2]);
