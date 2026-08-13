@@ -33,8 +33,10 @@ export function SpotPriceChart({ history, width = 212, height = 90 }: Props) {
 
     const pathData = history.map((p, i) => `${i === 0 ? "M" : "L"}${toX(i).toFixed(1)},${toY(p.price).toFixed(1)}`).join(" ");
     const areaPath = pathData + ` L${toX(history.length - 1).toFixed(1)},${H} L0,${H} Z`;
+    const lastX = toX(history.length - 1);
+    const lastY = toY(last);
 
-    return { lo, hi, up, color, pctChange, pathData, areaPath };
+    return { lo, hi, up, color, pctChange, pathData, areaPath, lastX, lastY };
   }, [history, W, H]);
 
   return (
@@ -60,6 +62,7 @@ export function SpotPriceChart({ history, width = 212, height = 90 }: Props) {
               <>
                 <path d={data.areaPath} fill="url(#spot-chart-grad)" />
                 <path d={data.pathData} fill="none" stroke={data.color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx={data.lastX} cy={data.lastY} r={2.5} fill={data.color} />
               </>
             )}
             <rect x={0} y={0} width={W} height={H} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
