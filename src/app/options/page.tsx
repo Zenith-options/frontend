@@ -7,7 +7,7 @@ import { VolSmile } from "../../components/VolSmile";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
 import { MARKETS, EXPIRIES, bs, smileVol, seededRandom, fmtN, fmtSpot, fmtK, type Greeks } from "../../lib/pricing";
-import { usePositionsStore } from "../../lib/store/positions";
+import { usePositionsStore, aggregateGreeks } from "../../lib/store/positions";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";}
@@ -49,12 +49,7 @@ export default function OptionsPage() {
   const atmIdx=chain.findIndex(r=>!r.itmCall);
   const tradeGreeks=trade?(trade.side==="call"?trade.row.call:trade.row.put):null;
 
-  const portGreeks=useMemo(()=>({
-    delta:positions.reduce((s,p)=>(p.side==="call"?1:-1)*p.delta*p.contracts+s,0),
-    gamma:positions.reduce((s,p)=>p.gamma*p.contracts+s,0),
-    theta:positions.reduce((s,p)=>p.theta*p.contracts+s,0),
-    vega: positions.reduce((s,p)=>p.vega*p.contracts+s,0),
-  }),[positions]);
+  const portGreeks=useMemo(()=>aggregateGreeks(positions),[positions]);
 
   const execTrade=()=>{
     if(!trade||!tradeGreeks)return;

@@ -27,6 +27,20 @@ interface PositionsState {
   closePosition: (id: number) => void;
 }
 
+// bs() already returns a correctly-signed delta per side (negative for puts),
+// so aggregation is a plain contract-weighted sum — no extra sign flip needed.
+export function aggregateGreeks(positions: Position[]) {
+  return positions.reduce(
+    (acc, p) => ({
+      delta: acc.delta + p.delta * p.contracts,
+      gamma: acc.gamma + p.gamma * p.contracts,
+      theta: acc.theta + p.theta * p.contracts,
+      vega: acc.vega + p.vega * p.contracts,
+    }),
+    { delta: 0, gamma: 0, theta: 0, vega: 0 }
+  );
+}
+
 export const usePositionsStore = create<PositionsState>()(
   persist(
     (set) => ({
