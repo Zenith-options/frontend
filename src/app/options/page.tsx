@@ -11,6 +11,7 @@ import { MARKETS, EXPIRIES, bs, smileVol, seededRandom, fmtN, fmtSpot, fmtK, typ
 import { usePositionsStore, aggregateGreeks } from "../../lib/store/positions";
 import { useAccountStore } from "../../lib/store/account";
 import { collateralRequired } from "../../lib/collateral";
+import { useHistoryStore } from "../../lib/store/history";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
@@ -34,6 +35,7 @@ function OptionsPageContent() {
   const debit = useAccountStore(s=>s.debit);
   const credit = useAccountStore(s=>s.credit);
   const reserveCollateral = useAccountStore(s=>s.reserveCollateral);
+  const addHistoryRecord = useHistoryStore(s=>s.addRecord);
   const balance = useAccountStore(s=>s.balance);
   const [contracts, setContracts] = useState("1");
   const [viewTab, setViewTab] = useState<"chain"|"positions">("chain");
