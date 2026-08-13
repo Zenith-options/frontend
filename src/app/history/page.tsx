@@ -4,6 +4,13 @@ import Link from "next/link";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
 import { useHistoryStore } from "../../lib/store/history";
+import { fmtN, fmtK } from "../../lib/pricing";
+
+function fmtDate(ts: number) {
+  return new Date(ts).toLocaleString("en-US", {
+    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
 
 export default function HistoryPage() {
   const records = useHistoryStore(s => s.records);
@@ -23,13 +30,57 @@ export default function HistoryPage() {
             {records.length} record{records.length===1?"":"s"}
           </p>
 
-          {records.length===0 && (
+          {records.length===0 ? (
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
               padding:"80px 0",border:"1px solid var(--border-subtle)",background:"var(--bg-raised)",gap:12}}>
               <div style={{fontSize:14,color:"var(--text-mid)"}}>No trades yet</div>
               <Link href="/options" style={{fontSize:13,color:"var(--brand)",textDecoration:"none"}}>
                 Open the options chain →
               </Link>
+            </div>
+          ) : (
+            <div style={{border:"1px solid var(--border-default)",background:"var(--bg-raised)",overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",minWidth:820}}>
+                <thead>
+                  <tr style={{borderBottom:"1px solid var(--border-default)"}}>
+                    {["Date","Asset","Type","Side","Action","Strike","Expiry","Qty","Premium","Realized P&L"].map(h=>(
+                      <th key={h} style={{padding:"8px 10px",fontSize:10,fontWeight:500,textTransform:"uppercase",
+                        letterSpacing:"0.05em",color:"var(--text-lo)",textAlign:"right",background:"var(--bg-overlay)"}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {records.map(r=>(
+                    <tr key={r.id} style={{borderBottom:"1px solid var(--border-subtle)"}}>
+                      <td style={{padding:"8px 10px",fontSize:11,color:"var(--text-mid)"}}>{fmtDate(r.timestamp)}</td>
+                      <td style={{padding:"8px 10px",fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{r.sym}</td>
+                      <td style={{padding:"8px 10px"}}>
+                        <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",
+                          background:r.positionType==="short"?"var(--put-dim)":"var(--call-dim)",
+                          color:r.positionType==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
+                          {r.positionType}
+                        </span>
+                      </td>
+                      <td style={{padding:"8px 10px"}}>
+                        <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",
+                          background:r.side==="call"?"var(--call-dim)":"var(--put-dim)",
+                          color:r.side==="call"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>
+                          {r.side}
+                        </span>
+                      </td>
+                      <td style={{padding:"8px 10px",fontSize:11,textAlign:"right",color:"var(--text-mid)",textTransform:"capitalize"}}>{r.action}</td>
+                      <td className="num" style={{padding:"8px 10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>{fmtK(r.strike)}</td>
+                      <td style={{padding:"8px 10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>{r.expiryLabel}</td>
+                      <td className="num" style={{padding:"8px 10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>{r.contracts}</td>
+                      <td className="num" style={{padding:"8px 10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>${fmtN(r.premium,2)}</td>
+                      <td className="num" style={{padding:"8px 10px",fontSize:11,textAlign:"right",fontWeight:600,
+                        color:r.realizedPnl===undefined?"var(--text-lo)":r.realizedPnl>=0?"var(--call)":"var(--put)"}}>
+                        {r.realizedPnl===undefined?"—":`${r.realizedPnl>=0?"+":"−"}$${fmtN(Math.abs(r.realizedPnl),2)}`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
