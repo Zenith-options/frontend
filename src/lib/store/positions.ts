@@ -74,6 +74,6 @@ export const usePositionsStore = create<PositionsState>()(
       closePosition: (id) =>
         set((state) => ({ positions: state.positions.filter((p) => p.id !== id) })),
     }),
-    { name: "zenith-positions" }
+    { name: "zenith-positions", skipHydration: true }
   )
 );

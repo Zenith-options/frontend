@@ -38,6 +38,6 @@ export const useHistoryStore = create<HistoryState>()(
         }));
       },
     }),
-    { name: "zenith-history" }
+    { name: "zenith-history", skipHydration: true }
   )
 );

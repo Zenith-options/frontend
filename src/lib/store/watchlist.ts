@@ -19,6 +19,6 @@ export const useWatchlistStore = create<WatchlistState>()(
         })),
       isFavorite: (sym) => get().favorites.includes(sym),
     }),
-    { name: "zenith-watchlist" }
+    { name: "zenith-watchlist", skipHydration: true }
   )
 );

@@ -1,10 +1,12 @@
 "use client";
 
 import { useWatchlistStore } from "../lib/store/watchlist";
+import { useHydrated } from "../lib/useHydrated";
 
 export function StarButton({ sym }: { sym: string }) {
-  const isFavorite = useWatchlistStore(s => s.isFavorite(sym));
+  const storeIsFavorite = useWatchlistStore(s => s.isFavorite(sym));
   const toggleFavorite = useWatchlistStore(s => s.toggleFavorite);
+  const isFavorite = useHydrated() && storeIsFavorite;
 
   return (
     <button

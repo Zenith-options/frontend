@@ -61,6 +61,7 @@ export const useWalletStore = create<WalletState>()(
     {
       name: "zenith-wallet",
       partialize: (s) => ({ address: s.address }),
+      skipHydration: true,
     }
   )
 );

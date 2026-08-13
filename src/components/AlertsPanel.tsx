@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAlertsStore, type AlertDirection } from "../lib/store/alerts";
 import { requestNotificationPermission, sendNotification } from "../lib/notify";
+import { useHydrated } from "../lib/useHydrated";
 
 export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
-  const alerts = useAlertsStore(s => s.alerts.filter(a => a.sym === sym));
+  const hydrated = useHydrated();
+  const storeAlerts = useAlertsStore(s => s.alerts.filter(a => a.sym === sym));
+  const alerts = useMemo(() => hydrated ? storeAlerts : [], [hydrated, storeAlerts]);
   const addAlert = useAlertsStore(s => s.addAlert);
   const removeAlert = useAlertsStore(s => s.removeAlert);
   const markTriggered = useAlertsStore(s => s.markTriggered);

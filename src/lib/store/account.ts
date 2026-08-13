@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-const STARTING_BALANCE = 50_000;
+export const STARTING_BALANCE = 50_000;
 
 interface AccountState {
   balance: number;
@@ -31,6 +31,6 @@ export const useAccountStore = create<AccountState>()(
       debit: (amount) => set((s) => ({ balance: s.balance - amount })),
       reset: () => set({ balance: STARTING_BALANCE, collateralLocked: 0 }),
     }),
-    { name: "zenith-account" }
+    { name: "zenith-account", skipHydration: true }
   )
 );

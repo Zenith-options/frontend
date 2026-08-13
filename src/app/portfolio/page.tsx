@@ -7,7 +7,8 @@ import { WalletConnect } from "../../components/WalletConnect";
 import { usePositionsStore, aggregateGreeks, type Position } from "../../lib/store/positions";
 import { useAccountStore } from "../../lib/store/account";
 import { useHistoryStore } from "../../lib/store/history";
-import { MARKETS, bs, smileVol, fmtN } from "../../lib/pricing";
+import { MARKETS, EXPIRIES, bs, smileVol, fmtN, fmtK } from "../../lib/pricing";
+import { collateralRequired } from "../../lib/collateral";
 import { toCsv, downloadCsv } from "../../lib/csv";
 import { ExportButton } from "../../components/ExportButton";
 
@@ -26,9 +27,11 @@ interface Marked extends Position {
 export default function PortfolioPage() {
   const positions = usePositionsStore(s => s.positions);
   const closePosition = usePositionsStore(s => s.closePosition);
+  const addPosition = usePositionsStore(s => s.addPosition);
   const balance = useAccountStore(s => s.balance);
   const collateralLocked = useAccountStore(s => s.collateralLocked);
   const releaseCollateral = useAccountStore(s => s.releaseCollateral);
+  const reserveCollateral = useAccountStore(s => s.reserveCollateral);
   const credit = useAccountStore(s => s.credit);
   const debit = useAccountStore(s => s.debit);
   const addHistoryRecord = useHistoryStore(s => s.addRecord);
@@ -109,6 +112,86 @@ export default function PortfolioPage() {
 
   const handleCloseStrategy = (legs: Marked[]) => {
     for (const leg of legs) handleClose(leg);
+  };
+
+  const [rollTargetId, setRollTargetId] = useState<number|null>(null);
+  const rollTarget = soloPositions.find(p => p.id === rollTargetId) ?? null;
+  const [rollStrikeOffsetPct, setRollStrikeOffsetPct] = useState(0);
+  const [rollExpiry, setRollExpiry] = useState(EXPIRIES[2]);
+
+  useEffect(() => {
+    if (!rollTarget) return;
+    setRollStrikeOffsetPct(0);
+    setRollExpiry(EXPIRIES.find(e => e.label === rollTarget.expiryLabel) ?? EXPIRIES[2]);
+  }, [rollTargetId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const rollPreview = useMemo(() => {
+    if (!rollTarget) return null;
+    const market = MARKETS.find(m => m.sym === rollTarget.sym) ?? MARKETS[0];
+    const spot = spots[rollTarget.sym] ?? market.price;
+    const newStrike = Math.round(rollTarget.strike * (1 + rollStrikeOffsetPct / 100) * 10000) / 10000;
+    const t = rollExpiry.days / 365;
+    const vol = smileVol(market.vol, newStrike / spot);
+    const greeks = bs(spot, newStrike, vol, t, rollTarget.side === "call");
+    const newPremium = greeks.premium * rollTarget.contracts;
+    const newCollateral = rollTarget.positionType === "short"
+      ? collateralRequired(rollTarget.side, rollTarget.contracts, newStrike, spot) : 0;
+
+    // Same cash math as handleClose (old leg) + execTrade (new leg), just summed
+    // into one net figure instead of applied as two separate trades.
+    const closeCashEffect = rollTarget.positionType === "short"
+      ? rollTarget.collateral - rollTarget.currentPremium
+      : rollTarget.currentPremium;
+    const openCashEffect = rollTarget.positionType === "short"
+      ? newPremium - newCollateral
+      : -newPremium;
+    const netCashEffect = closeCashEffect + openCashEffect;
+
+    return { spot, newStrike, greeks, newPremium, newCollateral, closeCashEffect, netCashEffect };
+  }, [rollTarget, rollStrikeOffsetPct, rollExpiry, spots]);
+
+  // After releasing the old leg's collateral and settling its P&L, does the
+  // resulting balance actually cover what opening the new leg needs?
+  const rollInsufficientFunds = rollTarget && rollPreview
+    ? balance + rollPreview.closeCashEffect < (rollTarget.positionType === "short" ? rollPreview.newCollateral : rollPreview.newPremium)
+    : false;
+
+  const executeRoll = () => {
+    if (!rollTarget || !rollPreview || rollInsufficientFunds) return;
+
+    // Close the old leg exactly like handleClose.
+    if (rollTarget.positionType === "short") {
+      releaseCollateral(rollTarget.collateral);
+      debit(rollTarget.currentPremium);
+    } else {
+      credit(rollTarget.currentPremium);
+    }
+    addHistoryRecord({
+      sym: rollTarget.sym, side: rollTarget.side, positionType: rollTarget.positionType, action: "close",
+      strike: rollTarget.strike, expiryLabel: rollTarget.expiryLabel, contracts: rollTarget.contracts,
+      premium: rollTarget.currentPremium, realizedPnl: rollTarget.pnl,
+    });
+    closePosition(rollTarget.id);
+
+    // Open the new leg at the chosen strike/expiry.
+    if (rollTarget.positionType === "short") {
+      reserveCollateral(rollPreview.newCollateral);
+      credit(rollPreview.newPremium);
+    } else {
+      debit(rollPreview.newPremium);
+    }
+    addPosition({
+      sym: rollTarget.sym, side: rollTarget.side, positionType: rollTarget.positionType, strike: rollPreview.newStrike,
+      expiryLabel: rollExpiry.label, expiryDays: rollExpiry.days,
+      contracts: rollTarget.contracts, entrySpot: rollPreview.spot, premium: rollPreview.newPremium, collateral: rollPreview.newCollateral,
+      delta: rollPreview.greeks.delta, gamma: rollPreview.greeks.gamma, theta: rollPreview.greeks.theta, vega: rollPreview.greeks.vega,
+    });
+    addHistoryRecord({
+      sym: rollTarget.sym, side: rollTarget.side, positionType: rollTarget.positionType, action: "open",
+      strike: rollPreview.newStrike, expiryLabel: rollExpiry.label, contracts: rollTarget.contracts, premium: rollPreview.newPremium,
+    });
+
+    setRollTargetId(null);
   };
 
   return (
@@ -225,7 +308,7 @@ export default function PortfolioPage() {
                   {soloPositions.map(p=>{
                     const expired = p.tRemaining<=0;
                     const sign = p.positionType==="short"?-1:1;
-                    return (
+                    return [
                       <tr key={p.id} style={{borderBottom:"1px solid var(--border-subtle)"}}>
                         <td style={{padding:"10px",fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{p.sym}</td>
                         <td style={{padding:"10px 4px"}}>
@@ -254,15 +337,84 @@ export default function PortfolioPage() {
                           {p.pnl>=0?"+":"−"}${fmtN(Math.abs(p.pnl),2)} <span style={{opacity:0.6}}>({p.pnlPct>=0?"+":""}{p.pnlPct.toFixed(1)}%)</span>
                         </td>
                         <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>{(sign*p.liveDelta*p.contracts).toFixed(3)}</td>
-                        <td style={{padding:"6px 10px",textAlign:"right"}}>
+                        <td style={{padding:"6px 10px",textAlign:"right",whiteSpace:"nowrap"}}>
+                          <button onClick={()=>setRollTargetId(rollTargetId===p.id?null:p.id)} style={{
+                            fontSize:10,color:rollTargetId===p.id?"var(--brand)":"var(--text-lo)",background:"none",
+                            border:"1px solid var(--border-default)",padding:"2px 8px",cursor:"pointer",marginRight:6}}>
+                            Roll
+                          </button>
                           <button onClick={()=>handleClose(p)} style={{
                             fontSize:10,color:"var(--text-lo)",background:"none",border:"1px solid var(--border-default)",
                             padding:"2px 8px",cursor:"pointer"}}>
                             {p.positionType==="short"?"Buy to close":"Sell to close"}
                           </button>
                         </td>
-                      </tr>
-                    );
+                      </tr>,
+                      rollTargetId===p.id && (
+                        <tr key={`${p.id}-roll`} style={{borderBottom:"1px solid var(--border-subtle)",background:"var(--bg-elevated)"}}>
+                          <td colSpan={11} style={{padding:"12px 16px"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+                              <div>
+                                <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>New Strike</div>
+                                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                  <button onClick={()=>setRollStrikeOffsetPct(v=>v-5)} style={{
+                                    background:"var(--bg-overlay)",border:"1px solid var(--border-default)",
+                                    color:"var(--text-mid)",padding:"3px 8px",cursor:"pointer"}}>−5%</button>
+                                  <span className="num" style={{fontSize:12,color:"var(--text-hi)",minWidth:70,textAlign:"center"}}>
+                                    {fmtK(p.strike*(1+rollStrikeOffsetPct/100))}
+                                  </span>
+                                  <button onClick={()=>setRollStrikeOffsetPct(v=>v+5)} style={{
+                                    background:"var(--bg-overlay)",border:"1px solid var(--border-default)",
+                                    color:"var(--text-mid)",padding:"3px 8px",cursor:"pointer"}}>+5%</button>
+                                </div>
+                              </div>
+                              <div>
+                                <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>New Expiry</div>
+                                <div style={{display:"flex",gap:2}}>
+                                  {EXPIRIES.map(e=>(
+                                    <button key={e.label} onClick={()=>setRollExpiry(e)} style={{
+                                      padding:"3px 7px",border:"none",cursor:"pointer",fontSize:11,
+                                      background:rollExpiry.label===e.label?"var(--atm-dim)":"transparent",
+                                      color:rollExpiry.label===e.label?"var(--atm)":"var(--text-lo)"}}>{e.label}</button>
+                                  ))}
+                                </div>
+                              </div>
+                              {rollPreview && (
+                                <>
+                                  <div>
+                                    <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>New Premium</div>
+                                    <span className="num" style={{fontSize:13,fontWeight:600,color:"var(--text-hi)"}}>
+                                      ${fmtN(rollPreview.newPremium,2)}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>
+                                      {rollPreview.netCashEffect>=0?"Net Credit":"Net Cost"}
+                                    </div>
+                                    <span className="num" style={{fontSize:13,fontWeight:600,
+                                      color:rollPreview.netCashEffect>=0?"var(--call)":"var(--put)"}}>
+                                      ${fmtN(Math.abs(rollPreview.netCashEffect),2)}
+                                    </span>
+                                  </div>
+                                </>
+                              )}
+                              <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
+                                {rollInsufficientFunds && (
+                                  <span style={{fontSize:11,color:"var(--put)"}}>Insufficient balance for the new leg</span>
+                                )}
+                                <button onClick={()=>setRollTargetId(null)} style={{
+                                  fontSize:11,color:"var(--text-lo)",background:"none",
+                                  border:"1px solid var(--border-default)",padding:"5px 12px",cursor:"pointer"}}>Cancel</button>
+                                <button onClick={executeRoll} disabled={!!rollInsufficientFunds} style={{
+                                  fontSize:11,color:"var(--bg)",background:"var(--brand)",border:"none",
+                                  padding:"5px 12px",cursor:rollInsufficientFunds?"default":"pointer",
+                                  opacity:rollInsufficientFunds?0.5:1}}>Confirm Roll</button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ),
+                    ];
                   })}
                 </tbody>
               </table>
