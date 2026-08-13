@@ -32,9 +32,25 @@ export function VolSurfaceHeatmap({ baseVol }: Props) {
         Volatility Surface
       </div>
       <table style={{ borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <th style={{ width: 36 }} />
+            {MONEYNESS.map(m => (
+              <th key={m} style={{
+                fontSize: 8, fontFamily: "var(--font-mono)", fontWeight: 500,
+                color: m === 1 ? "var(--atm)" : "var(--text-lo)", padding: "0 0 4px",
+              }}>
+                {Math.round(m * 100)}%
+              </th>
+            ))}
+          </tr>
+        </thead>
         <tbody>
           {grid.map((row, i) => (
             <tr key={i}>
+              <td style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-lo)", paddingRight: 6, textAlign: "right" }}>
+                {EXPIRY_DAYS[i]}D
+              </td>
               {row.map((cell, j) => (
                 <td key={j} title={`${Math.round(cell.moneyness * 100)}% strike, ${cell.days}D: ${(cell.iv * 100).toFixed(1)}% IV`} style={{
                   width: 32, height: 24, border: "1px solid var(--border-subtle)",
