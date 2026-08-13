@@ -71,6 +71,24 @@ export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
           ))}
         </div>
       )}
+
+      {alerts.some(a => a.triggeredAt) && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--atm)", marginBottom: 4 }}>
+            Triggered
+          </div>
+          {alerts.filter(a => a.triggeredAt).map(a => (
+            <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" }}>
+              <span className="num" style={{ fontSize: 11, color: "var(--atm)" }}>
+                {a.direction === "above" ? "≥" : "≤"} ${a.targetPrice.toFixed(4)}
+              </span>
+              <button onClick={() => removeAlert(a.id)} style={{
+                background: "none", border: "none", color: "var(--text-lo)", fontSize: 14, cursor: "pointer", padding: "0 4px",
+              }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
