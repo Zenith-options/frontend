@@ -168,4 +168,20 @@
     animation: shimmer 1.5s infinite;
     border-radius: 0;
   }
+
+  /* Marketing page responsiveness — the app shell (chain/portfolio) stays desktop-first */
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    gap: 64px;
+    align-items: start;
+  }
+  .nav-links { display: flex; gap: 20px; }
+  .stats-row { display: flex; flex-wrap: wrap; gap: 0; }
+
+  @media (max-width: 760px) {
+    .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+    .nav-links { display: none; }
+    .stats-row > div { padding-right: 20px !important; margin-right: 20px !important; }
+  }
 }

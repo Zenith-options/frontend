@@ -36,7 +36,7 @@ export default function Home() {
             <Logo size={18} />
             <span style={{fontSize:14,fontWeight:600,letterSpacing:"0",fontFamily:"var(--font-serif)"}}>Zenith</span>
           </div>
-          <div style={{display:"flex",gap:20}}>
+          <div className="nav-links">
             {[["Options Chain","/options"],["Portfolio","/portfolio"],["Docs","#"]].map(([l,h])=>(
               <Link key={l} href={h} style={{fontSize:13,color:"var(--text-mid)",textDecoration:"none",
                 transition:"color 120ms"}}
@@ -61,7 +61,7 @@ export default function Home() {
 
       {/* HERO */}
       <section style={{maxWidth:1080,margin:"0 auto",padding:"80px 24px 48px"}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 420px",gap:64,alignItems:"start"}}>
+        <div className="hero-grid">
           <div>
             <div style={{fontSize:11,fontFamily:"var(--font-mono)",color:"var(--brand)",
               textTransform:"uppercase",letterSpacing:"0.12em",marginBottom:20}}>
@@ -92,7 +92,7 @@ export default function Home() {
             </div>
 
             {/* Stats — plain, no cards */}
-            <div style={{display:"flex",gap:0}}>
+            <div className="stats-row">
               {[["$2.2M","Open Interest"],["84","Active Series"],["312","Traders"],["25%","Avg IV"]].map(([v,l],i)=>(
                 <div key={l} style={{paddingRight:32,marginRight:32,
                   borderRight:i<3?"1px solid var(--border-subtle)":"none"}}>
