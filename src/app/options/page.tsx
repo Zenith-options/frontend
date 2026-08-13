@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { PayoffDiagram } from "../../components/PayoffDiagram";
 import { VolSmile } from "../../components/VolSmile";
+import { AppHeader } from "../../components/AppHeader";
 
 function normCDF(x: number) {
   if (x < -7) return 0; if (x > 7) return 1;
@@ -114,21 +114,11 @@ export default function OptionsPage() {
     <div style={{display:"flex",flexDirection:"column",height:"100vh",background:"var(--bg)",overflow:"hidden",fontFamily:"var(--font-sans)"}}>
 
       {/* TOP BAR */}
-      <header style={{height:44,flexShrink:0,display:"flex",alignItems:"center",
-        borderBottom:"1px solid var(--border-default)",padding:"0 16px",gap:16,
-        background:"var(--bg-raised)"}}>
-        <Link href="/" style={{display:"flex",alignItems:"center",gap:8,textDecoration:"none"}}>
-          <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-            <polygon points="10,2 18,18 2,18" stroke="#8B5CF6" strokeWidth="1.5" fill="rgba(139,92,246,0.1)" strokeLinejoin="round"/>
-            <polygon points="10,6 15,16 5,16" fill="#8B5CF6" opacity="0.4"/>
-          </svg>
-          <span style={{fontSize:12,fontWeight:700,color:"var(--text-hi)"}}>Zenith</span>
-        </Link>
-        <div style={{width:1,height:20,background:"var(--border-default)"}}/>
+      <AppHeader>
         <div style={{display:"flex",gap:1}}>
           {MARKETS.map(m=>(
             <button key={m.sym} onClick={()=>setSym(m.sym)} style={{
-              padding:"4px 10px",borderRadius:"4px 4px 0 0",border:"none",cursor:"pointer",
+              padding:"4px 10px",border:"none",cursor:"pointer",
               fontSize:12,fontWeight:600,transition:"all 120ms",
               background:sym===m.sym?"var(--bg-overlay)":"transparent",
               color:sym===m.sym?"var(--text-hi)":"var(--text-mid)",
@@ -147,16 +137,16 @@ export default function OptionsPage() {
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
           {EXPIRIES.map(e=>(
             <button key={e.label} onClick={()=>setExpiry(e)} style={{
-              padding:"3px 7px",border:"none",borderRadius:3,cursor:"pointer",fontSize:11,
+              padding:"3px 7px",border:"none",borderRadius:0,cursor:"pointer",fontSize:11,
               background:expiry.label===e.label?"var(--atm-dim)":"transparent",
               color:expiry.label===e.label?"var(--atm)":"var(--text-lo)",
             }}>{e.label}</button>
           ))}
           <div style={{width:1,height:16,background:"var(--border-default)",margin:"0 8px"}}/>
-          <button style={{padding:"5px 12px",background:"var(--brand)",color:"#000",
-            border:"none",borderRadius:4,fontSize:12,fontWeight:700,cursor:"pointer"}}>Connect</button>
+          <button style={{padding:"5px 12px",background:"var(--brand)",color:"var(--bg)",
+            border:"none",borderRadius:0,fontSize:12,fontWeight:700,cursor:"pointer"}}>Connect</button>
         </div>
-      </header>
+      </AppHeader>
 
       {/* MAIN */}
       <div style={{flex:1,display:"flex",overflow:"hidden",minHeight:0}}>

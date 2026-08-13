@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { PayoffDiagram } from "../components/PayoffDiagram";
+import { Logo } from "../components/Logo";
 
 function normCDF(x:number){if(x<-7)return 0;if(x>7)return 1;const k=1/(1+0.2316419*Math.abs(x));const p=k*(0.31938153+k*(-0.356563782+k*(1.781477937+k*(-1.821255978+k*1.330274429))));const pdf=Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI);return x>=0?1-pdf*p:pdf*p;}
 function normPDF(x:number){return Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI);}
@@ -43,11 +44,8 @@ export default function Home() {
         borderBottom:"1px solid var(--border-default)",background:"rgba(9,9,11,0.85)",backdropFilter:"blur(12px)"}}>
         <div style={{display:"flex",alignItems:"center",gap:32}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-              <polygon points="10,2 18,18 2,18" stroke="#8B5CF6" strokeWidth="1.5" fill="rgba(139,92,246,0.1)" strokeLinejoin="round"/>
-              <polygon points="10,6 15,16 5,16" fill="#8B5CF6" opacity="0.4"/>
-            </svg>
-            <span style={{fontSize:14,fontWeight:700,letterSpacing:"-0.01em"}}>Zenith</span>
+            <Logo size={18} />
+            <span style={{fontSize:14,fontWeight:700,letterSpacing:"-0.01em",fontFamily:"var(--font-serif)"}}>Zenith</span>
           </div>
           <div style={{display:"flex",gap:20}}>
             {[["Options Chain","/options"],["Portfolio","/portfolio"],["Docs","#"]].map(([l,h])=>(
