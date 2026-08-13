@@ -6,6 +6,7 @@ import { useAlertsStore, type AlertDirection } from "../lib/store/alerts";
 export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
   const alerts = useAlertsStore(s => s.alerts.filter(a => a.sym === sym));
   const addAlert = useAlertsStore(s => s.addAlert);
+  const removeAlert = useAlertsStore(s => s.removeAlert);
   const [price, setPrice] = useState(() => spot.toFixed(4));
   const [direction, setDirection] = useState<AlertDirection>("above");
 
@@ -39,8 +40,21 @@ export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
         }}>Add</button>
       </div>
 
-      {alerts.length === 0 && (
+      {alerts.length === 0 ? (
         <div style={{ fontSize: 11, color: "var(--text-lo)" }}>No alerts set for {sym}.</div>
+      ) : (
+        <div>
+          {alerts.filter(a => !a.triggeredAt).map(a => (
+            <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" }}>
+              <span className="num" style={{ fontSize: 11, color: "var(--text-mid)" }}>
+                {a.direction === "above" ? "≥" : "≤"} ${a.targetPrice.toFixed(4)}
+              </span>
+              <button onClick={() => removeAlert(a.id)} style={{
+                background: "none", border: "none", color: "var(--text-lo)", fontSize: 14, cursor: "pointer", padding: "0 4px",
+              }}>×</button>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
