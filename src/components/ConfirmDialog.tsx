@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 interface Props {
   title: string;
   confirmLabel: string;
@@ -11,12 +13,18 @@ interface Props {
 }
 
 export function ConfirmDialog({ title, confirmLabel, onConfirm, onCancel, disabled, disabledReason, children }: Props) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
   return (
-    <div style={{
+    <div onClick={onCancel} style={{
       position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100,
       display: "flex", alignItems: "center", justifyContent: "center",
     }}>
-      <div style={{
+      <div onClick={e => e.stopPropagation()} style={{
         width: 360, background: "var(--bg-elevated)", border: "1px solid var(--border-default)", padding: 20,
       }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-hi)", marginBottom: 14 }}>{title}</div>
