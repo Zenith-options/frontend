@@ -2,15 +2,18 @@
 
 import { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { PayoffDiagram } from "../../components/PayoffDiagram";
 import { VolSmile } from "../../components/VolSmile";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
 import { MARKETS, EXPIRIES, bs, smileVol, seededRandom, fmtN, fmtSpot, fmtK, type Greeks } from "../../lib/pricing";
 import { usePositionsStore, aggregateGreeks } from "../../lib/store/positions";
+import { useAccountStore } from "../../lib/store/account";
+import { collateralRequired } from "../../lib/collateral";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
-interface TradeState{row:ChainRow;side:"call"|"put";}
+interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
 
 export default function OptionsPage() {
   return (
@@ -28,7 +31,10 @@ function OptionsPageContent() {
   const [trade, setTrade] = useState<TradeState|null>(null);
   const positions = usePositionsStore(s=>s.positions);
   const addPosition = usePositionsStore(s=>s.addPosition);
-  const closePosition = usePositionsStore(s=>s.closePosition);
+  const debit = useAccountStore(s=>s.debit);
+  const credit = useAccountStore(s=>s.credit);
+  const reserveCollateral = useAccountStore(s=>s.reserveCollateral);
+  const balance = useAccountStore(s=>s.balance);
   const [contracts, setContracts] = useState("1");
   const [viewTab, setViewTab] = useState<"chain"|"positions">("chain");
   const prevSpotRef = useRef(spot);
@@ -59,15 +65,32 @@ function OptionsPageContent() {
 
   const portGreeks=useMemo(()=>aggregateGreeks(positions),[positions]);
 
+  const qty=Math.max(0.01,parseFloat(contracts)||1);
+  const collateral=trade&&trade.mode==="write"?collateralRequired(trade.side,qty,trade.row.strike,spot):0;
+  const requiredFunds=trade?(trade.mode==="write"?collateral:(tradeGreeks?.premium??0)*qty):0;
+  const insufficientFunds=balance<requiredFunds;
+
   const execTrade=()=>{
-    if(!trade||!tradeGreeks)return;
-    const qty=parseFloat(contracts)||1;
-    addPosition({
-      sym,side:trade.side,strike:trade.row.strike,
-      expiryLabel:expiry.label,expiryDays:expiry.days,
-      contracts:qty,entrySpot:spot,premium:tradeGreeks.premium*qty,
-      delta:tradeGreeks.delta,gamma:tradeGreeks.gamma,theta:tradeGreeks.theta,vega:tradeGreeks.vega,
-    });
+    if(!trade||!tradeGreeks||insufficientFunds)return;
+    const totalPremium=tradeGreeks.premium*qty;
+    if(trade.mode==="write"){
+      if(!reserveCollateral(collateral))return;
+      addPosition({
+        sym,side:trade.side,positionType:"short",strike:trade.row.strike,
+        expiryLabel:expiry.label,expiryDays:expiry.days,
+        contracts:qty,entrySpot:spot,premium:totalPremium,collateral,
+        delta:tradeGreeks.delta,gamma:tradeGreeks.gamma,theta:tradeGreeks.theta,vega:tradeGreeks.vega,
+      });
+      credit(totalPremium);
+    }else{
+      addPosition({
+        sym,side:trade.side,positionType:"long",strike:trade.row.strike,
+        expiryLabel:expiry.label,expiryDays:expiry.days,
+        contracts:qty,entrySpot:spot,premium:totalPremium,collateral:0,
+        delta:tradeGreeks.delta,gamma:tradeGreeks.gamma,theta:tradeGreeks.theta,vega:tradeGreeks.vega,
+      });
+      debit(totalPremium);
+    }
     setTrade(null);
     setViewTab("positions");
   };
@@ -145,7 +168,7 @@ function OptionsPageContent() {
                     <span className="num" style={{fontSize:10,color:"var(--text-mid)"}}>{pct}%</span>
                   </div>
                   <div style={{height:3,background:"var(--bg-overlay)",borderRadius:0}}>
-                    <div style={{width:`${pct}%`,height:"100%",borderRadius:0,background:`rgba(201,151,76,${0.3+pct/100*0.5})`}}/>
+                    <div style={{width:`${pct}%`,height:"100%",borderRadius:0,background:`rgba(181,150,101,${0.3+pct/100*0.5})`}}/>
                   </div>
                 </div>
               );
@@ -184,7 +207,7 @@ function OptionsPageContent() {
               }}>{tab}{tab==="positions"&&positions.length>0?` (${positions.length})`:""}</button>
             ))}
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",paddingRight:4}}>
-              <span style={{fontSize:10,color:"var(--text-lo)"}}>{sym}-USD · {expiry.label} · {chain.length} strikes · Click ask to trade</span>
+              <span style={{fontSize:10,color:"var(--text-lo)"}}>{sym}-USD · {expiry.label} · {chain.length} strikes · Click ask to buy, bid to write</span>
             </div>
           </div>
 
@@ -208,8 +231,10 @@ function OptionsPageContent() {
                     style={{background:isAtm?"var(--atm-dim)":undefined}}>
                     <div className="cc">{vol}</div>
                     <div className="cc">{oi.toLocaleString()}</div>
-                    <div className="cc">{fmtN(Math.max(0,row.call.premium-sp))}</div>
-                    <div className="cc ask call" title="Click to buy" onClick={()=>setTrade({row,side:"call"})}>
+                    <div className="cc tradeable call" title="Click to write (sell)" onClick={()=>setTrade({row,side:"call",mode:"write"})}>
+                      {fmtN(Math.max(0,row.call.premium-sp))}
+                    </div>
+                    <div className="cc tradeable call" title="Click to buy" onClick={()=>setTrade({row,side:"call",mode:"buy"})}>
                       {fmtN(row.call.premium+sp)}
                     </div>
                     <div className="cc brand">{(row.call.iv*100).toFixed(1)}</div>
@@ -218,10 +243,12 @@ function OptionsPageContent() {
                       {isAtm&&<div style={{fontSize:7,marginTop:1,opacity:0.6}}>ATM</div>}
                     </div>
                     <div className="cc brand">{(row.put.iv*100).toFixed(1)}</div>
-                    <div className="cc ask put" title="Click to buy" onClick={()=>setTrade({row,side:"put"})}>
+                    <div className="cc tradeable put" title="Click to buy" onClick={()=>setTrade({row,side:"put",mode:"buy"})}>
                       {fmtN(row.put.premium+sp)}
                     </div>
-                    <div className="cc">{fmtN(Math.max(0,row.put.premium-sp))}</div>
+                    <div className="cc tradeable put" title="Click to write (sell)" onClick={()=>setTrade({row,side:"put",mode:"write"})}>
+                      {fmtN(Math.max(0,row.put.premium-sp))}
+                    </div>
                     <div className="cc">{oi.toLocaleString()}</div>
                     <div className="cc">{vol}</div>
                   </div>
@@ -241,16 +268,25 @@ function OptionsPageContent() {
                 <table style={{width:"100%",borderCollapse:"collapse"}}>
                   <thead>
                     <tr style={{borderBottom:"1px solid var(--border-default)"}}>
-                      {["Asset","Side","Strike","Expiry","Qty","Δ","Γ","Θ","V",""].map(h=>(
+                      {["Asset","Type","Side","Strike","Expiry","Qty","Δ","Γ","Θ","V",""].map(h=>(
                         <th key={h} style={{padding:"6px 8px",fontSize:10,fontWeight:500,textTransform:"uppercase",
                           letterSpacing:"0.05em",color:"var(--text-lo)",textAlign:"right",background:"var(--bg-raised)"}}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {positions.map(pos=>(
+                    {positions.map(pos=>{
+                      const sign=pos.positionType==="short"?-1:1;
+                      return(
                       <tr key={pos.id} style={{borderBottom:"1px solid var(--border-subtle)"}}>
                         <td style={{padding:"8px",fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{pos.sym}</td>
+                        <td style={{padding:"8px 4px"}}>
+                          <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",borderRadius:0,
+                            background:pos.positionType==="short"?"var(--put-dim)":"var(--call-dim)",
+                            color:pos.positionType==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
+                            {pos.positionType}
+                          </span>
+                        </td>
                         <td style={{padding:"8px 4px"}}>
                           <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",borderRadius:0,
                             background:pos.side==="call"?"var(--call-dim)":"var(--put-dim)",
@@ -259,19 +295,18 @@ function OptionsPageContent() {
                           </span>
                         </td>
                         {[fmtK(pos.strike),pos.expiryLabel,pos.contracts.toFixed(0),
-                          (pos.delta*pos.contracts).toFixed(3),(pos.gamma*pos.contracts).toFixed(4),
-                          (pos.theta*pos.contracts).toFixed(4),(pos.vega*pos.contracts).toFixed(3)
+                          (sign*pos.delta*pos.contracts).toFixed(3),(sign*pos.gamma*pos.contracts).toFixed(4),
+                          (sign*pos.theta*pos.contracts).toFixed(4),(sign*pos.vega*pos.contracts).toFixed(3)
                         ].map((v,j)=>(
                           <td key={j} className="num" style={{padding:"8px",fontSize:11,textAlign:"right",
                             color:j===5?"var(--put)":"var(--text-hi)"}}>{v}</td>
                         ))}
-                        <td style={{padding:"4px 8px"}}>
-                          <button onClick={()=>closePosition(pos.id)} style={{
-                            fontSize:10,color:"var(--text-lo)",background:"none",border:"1px solid var(--border-default)",
-                            borderRadius:0,padding:"2px 8px",cursor:"pointer"}}>Close</button>
+                        <td style={{padding:"4px 8px",textAlign:"right"}}>
+                          <Link href="/portfolio" style={{fontSize:10,color:"var(--brand)",textDecoration:"none"}}>Manage →</Link>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
@@ -307,7 +342,7 @@ function OptionsPageContent() {
               <div>
                 <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",
                   color:trade.side==="call"?"var(--call)":"var(--put)",marginBottom:4}}>
-                  {trade.side==="call"?"▲ CALL":"▼ PUT"}
+                  {trade.mode==="write"?"WRITE ":"BUY "}{trade.side==="call"?"▲ CALL":"▼ PUT"}
                 </div>
                 <div style={{fontSize:15,fontWeight:700,color:"var(--text-hi)"}}>
                   {sym} {trade.side==="call"?"Call":"Put"}
@@ -326,7 +361,7 @@ function OptionsPageContent() {
                 color:"var(--text-lo)",marginBottom:8}}>P&L at Expiry</div>
               <PayoffDiagram
                 spot={spot} strike={trade.row.strike} premium={tradeGreeks.premium}
-                isCall={trade.side==="call"} contracts={parseFloat(contracts)||1}
+                isCall={trade.side==="call"} short={trade.mode==="write"} contracts={qty}
                 width={284} height={155}
               />
             </div>
@@ -378,6 +413,7 @@ function OptionsPageContent() {
                     style={{width:36,height:40,border:"none",background:"none",color:"var(--text-mid)",fontSize:18,cursor:"pointer"}}>−</button>
                   <input type="number" min="0.01" step="0.01" value={contracts}
                     onChange={e=>setContracts(e.target.value)}
+                    onBlur={e=>setContracts(String(Math.max(0.01,parseFloat(e.target.value)||1)))}
                     style={{flex:1,height:40,border:"none",background:"none",textAlign:"center",
                       fontFamily:"var(--font-mono)",fontSize:16,color:"var(--text-hi)",outline:"none"}}/>
                   <button onClick={()=>setContracts(c=>String((parseFloat(c)||0)+1))}
@@ -385,21 +421,35 @@ function OptionsPageContent() {
                 </div>
               </div>
               <div style={{background:"var(--bg-elevated)",borderRadius:0,padding:"9px 12px",marginBottom:10}}>
-                {[["Qty",`${contracts} × ${sym}`],
-                  ["Total premium",`$${fmtN(tradeGreeks.premium*(parseFloat(contracts)||1))}`],
-                  ["Max loss",`$${fmtN(tradeGreeks.premium*(parseFloat(contracts)||1))}`],
-                ].map(([k,v])=>(
+                {(trade.mode==="write"?[
+                  ["Qty",`${contracts} × ${sym}`],
+                  ["Premium received",`+$${fmtN(tradeGreeks.premium*qty)}`],
+                  ["Collateral required",`$${fmtN(collateral)}`],
+                  ["Available balance",`$${fmtN(balance,2)}`],
+                ]:[
+                  ["Qty",`${contracts} × ${sym}`],
+                  ["Total premium",`$${fmtN(tradeGreeks.premium*qty)}`],
+                  ["Max loss",`$${fmtN(tradeGreeks.premium*qty)}`],
+                  ["Available balance",`$${fmtN(balance,2)}`],
+                ]).map(([k,v])=>(
                   <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}>
                     <span style={{fontSize:11,color:"var(--text-lo)"}}>{k}</span>
-                    <span className="num" style={{fontSize:11,color:"var(--text-hi)"}}>{v}</span>
+                    <span className="num" style={{fontSize:11,
+                      color:k==="Premium received"?"var(--call)":"var(--text-hi)"}}>{v}</span>
                   </div>
                 ))}
+                {insufficientFunds&&(
+                  <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid var(--border-default)",
+                    fontSize:11,color:"var(--put)"}}>
+                    Insufficient balance {trade.mode==="write"?"to post collateral":"to cover premium"}.
+                  </div>
+                )}
               </div>
-              <button onClick={execTrade} style={{width:"100%",height:44,borderRadius:0,border:"none",cursor:"pointer",
-                fontSize:14,fontWeight:700,
-                background:trade.side==="call"?"var(--call)":"var(--put)",color:"#000",
-                boxShadow:trade.side==="call"?"0 4px 16px rgba(34,197,94,0.25)":"0 4px 16px rgba(244,63,94,0.25)"}}>
-                Buy {trade.side.toUpperCase()} @ {fmtK(trade.row.strike)}
+              <button onClick={execTrade} disabled={insufficientFunds} style={{width:"100%",height:44,borderRadius:0,border:"none",
+                cursor:insufficientFunds?"default":"pointer",fontSize:14,fontWeight:700,
+                opacity:insufficientFunds?0.5:1,
+                background:trade.side==="call"?"var(--call)":"var(--put)",color:"var(--bg)"}}>
+                {trade.mode==="write"?"Write":"Buy"} {trade.side.toUpperCase()} @ {fmtK(trade.row.strike)}
               </button>
             </div>
 
@@ -429,7 +479,7 @@ function OptionsPageContent() {
           Black-Scholes · r=5.0% · Vol smile applied · {chain.length} strikes
         </span>
         <span style={{fontSize:10,color:"var(--text-lo)"}}>·</span>
-        <span style={{fontSize:10,color:"var(--text-lo)"}}>Click <span style={{color:"var(--call)"}}>call ask</span> or <span style={{color:"var(--put)"}}>put ask</span> to open trade panel</span>
+        <span style={{fontSize:10,color:"var(--text-lo)"}}>Click an <b>ask</b> to buy, a <b>bid</b> to write (sell) and collect premium</span>
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
           <div style={{width:5,height:5,borderRadius:"50%",background:"var(--call)",opacity:0.8}}/>
           <span style={{fontSize:10,color:"var(--text-lo)"}}>Live · Stellar Testnet</span>

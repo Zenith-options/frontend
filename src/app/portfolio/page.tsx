@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
 import { usePositionsStore, aggregateGreeks, type Position } from "../../lib/store/positions";
+import { useAccountStore } from "../../lib/store/account";
 import { MARKETS, bs, smileVol, fmtN } from "../../lib/pricing";
 
 interface Marked extends Position {
@@ -22,6 +23,11 @@ interface Marked extends Position {
 export default function PortfolioPage() {
   const positions = usePositionsStore(s => s.positions);
   const closePosition = usePositionsStore(s => s.closePosition);
+  const balance = useAccountStore(s => s.balance);
+  const collateralLocked = useAccountStore(s => s.collateralLocked);
+  const releaseCollateral = useAccountStore(s => s.releaseCollateral);
+  const credit = useAccountStore(s => s.credit);
+  const debit = useAccountStore(s => s.debit);
 
   // Tick every underlying's spot so open positions can be marked-to-market live,
   // same random-walk model the chain page uses.
@@ -46,7 +52,9 @@ export default function PortfolioPage() {
     const vol = smileVol(market.vol, p.strike / spot);
     const g = bs(spot, p.strike, vol, tRemaining, p.side === "call");
     const currentPremium = g.premium * p.contracts;
-    const pnl = currentPremium - p.premium;
+    // Long: profit when current value rises above what was paid.
+    // Short: profit when it costs less than the premium collected to close it out.
+    const pnl = p.positionType === "short" ? p.premium - currentPremium : currentPremium - p.premium;
     return {
       ...p, spot, tRemaining, currentPremium, pnl,
       pnlPct: p.premium > 0 ? (pnl / p.premium) * 100 : 0,
@@ -54,15 +62,24 @@ export default function PortfolioPage() {
     };
   }), [positions, spots]);
 
-  const totals = useMemo(() => ({
-    paid: marked.reduce((s, p) => s + p.premium, 0),
-    value: marked.reduce((s, p) => s + p.currentPremium, 0),
-    pnl: marked.reduce((s, p) => s + p.pnl, 0),
-  }), [marked]);
+  const totalPnl = useMemo(() => marked.reduce((s, p) => s + p.pnl, 0), [marked]);
 
   const netGreeks = useMemo(() => aggregateGreeks(
     marked.map(p => ({ ...p, delta: p.liveDelta, gamma: p.liveGamma, theta: p.liveTheta, vega: p.liveVega }))
   ), [marked]);
+
+  // Realize the position's P&L into the account balance and release any
+  // collateral, then remove it. This is the one place a position actually
+  // settles — the quick view on the chain page just links here.
+  const handleClose = (p: Marked) => {
+    if (p.positionType === "short") {
+      releaseCollateral(p.collateral);
+      debit(p.currentPremium);
+    } else {
+      credit(p.currentPremium);
+    }
+    closePosition(p.id);
+  };
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100vh",background:"var(--bg)",overflow:"hidden",fontFamily:"var(--font-sans)"}}>
@@ -85,9 +102,9 @@ export default function PortfolioPage() {
           {/* Summary bar */}
           <div style={{display:"flex",gap:0,marginBottom:32,border:"1px solid var(--border-default)",background:"var(--bg-raised)"}}>
             {[
-              {label:"Premium Paid", value:`$${fmtN(totals.paid,2)}`, color:"var(--text-hi)"},
-              {label:"Current Value", value:`$${fmtN(totals.value,2)}`, color:"var(--text-hi)"},
-              {label:"Total P&L", value:`${totals.pnl>=0?"+":"−"}$${fmtN(Math.abs(totals.pnl),2)}`, color:totals.pnl>=0?"var(--call)":"var(--put)"},
+              {label:"Available Balance", value:`$${fmtN(balance,2)}`, color:"var(--text-hi)"},
+              {label:"Collateral Locked", value:`$${fmtN(collateralLocked,2)}`, color:"var(--atm)"},
+              {label:"Unrealized P&L", value:`${totalPnl>=0?"+":"−"}$${fmtN(Math.abs(totalPnl),2)}`, color:totalPnl>=0?"var(--call)":"var(--put)"},
               {label:"Net Delta", value:`${netGreeks.delta>=0?"+":"−"}${Math.abs(netGreeks.delta).toFixed(3)}`, color:"var(--text-hi)"},
               {label:"Net Theta", value:`${netGreeks.theta>=0?"+":"−"}${Math.abs(netGreeks.theta).toFixed(4)}`, color:"var(--put)"},
               {label:"Net Vega", value:`${netGreeks.vega>=0?"+":"−"}${Math.abs(netGreeks.vega).toFixed(3)}`, color:"var(--atm)"},
@@ -109,10 +126,10 @@ export default function PortfolioPage() {
             </div>
           ) : (
             <div style={{border:"1px solid var(--border-default)",background:"var(--bg-raised)",overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",minWidth:820}}>
+              <table style={{width:"100%",borderCollapse:"collapse",minWidth:940}}>
                 <thead>
                   <tr style={{borderBottom:"1px solid var(--border-default)"}}>
-                    {["Asset","Side","Strike","Expiry","Qty","Entry Premium","Current Value","P&L","Δ",""].map(h=>(
+                    {["Asset","Type","Side","Strike","Expiry","Qty","Collateral","Entry","Current","P&L","Δ",""].map(h=>(
                       <th key={h} style={{padding:"8px 10px",fontSize:10,fontWeight:500,textTransform:"uppercase",
                         letterSpacing:"0.05em",color:"var(--text-lo)",textAlign:"right",background:"var(--bg-overlay)"}}>{h}</th>
                     ))}
@@ -121,9 +138,17 @@ export default function PortfolioPage() {
                 <tbody>
                   {marked.map(p=>{
                     const expired = p.tRemaining<=0;
+                    const sign = p.positionType==="short"?-1:1;
                     return (
                       <tr key={p.id} style={{borderBottom:"1px solid var(--border-subtle)"}}>
                         <td style={{padding:"10px",fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{p.sym}</td>
+                        <td style={{padding:"10px 4px"}}>
+                          <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",
+                            background:p.positionType==="short"?"var(--put-dim)":"var(--call-dim)",
+                            color:p.positionType==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
+                            {p.positionType}
+                          </span>
+                        </td>
                         <td style={{padding:"10px 4px"}}>
                           <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",
                             background:p.side==="call"?"var(--call-dim)":"var(--put-dim)",
@@ -134,16 +159,21 @@ export default function PortfolioPage() {
                         <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>{p.strike>=1000?p.strike.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}):p.strike.toFixed(4)}</td>
                         <td style={{padding:"10px",fontSize:11,textAlign:"right",color:expired?"var(--put)":"var(--text-mid)"}}>{expired?"Expired":p.expiryLabel}</td>
                         <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>{p.contracts}</td>
-                        <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>${fmtN(p.premium,2)}</td>
+                        <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>{p.collateral>0?`$${fmtN(p.collateral,2)}`:"—"}</td>
+                        <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>
+                          {p.positionType==="short"?"+":""}${fmtN(p.premium,2)}
+                        </td>
                         <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>${fmtN(p.currentPremium,2)}</td>
                         <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",fontWeight:600,color:p.pnl>=0?"var(--call)":"var(--put)"}}>
                           {p.pnl>=0?"+":"−"}${fmtN(Math.abs(p.pnl),2)} <span style={{opacity:0.6}}>({p.pnlPct>=0?"+":""}{p.pnlPct.toFixed(1)}%)</span>
                         </td>
-                        <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>{(p.liveDelta*p.contracts).toFixed(3)}</td>
+                        <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>{(sign*p.liveDelta*p.contracts).toFixed(3)}</td>
                         <td style={{padding:"6px 10px",textAlign:"right"}}>
-                          <button onClick={()=>closePosition(p.id)} style={{
+                          <button onClick={()=>handleClose(p)} style={{
                             fontSize:10,color:"var(--text-lo)",background:"none",border:"1px solid var(--border-default)",
-                            padding:"2px 8px",cursor:"pointer"}}>Close</button>
+                            padding:"2px 8px",cursor:"pointer"}}>
+                            {p.positionType==="short"?"Buy to close":"Sell to close"}
+                          </button>
                         </td>
                       </tr>
                     );

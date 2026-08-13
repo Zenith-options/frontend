@@ -20,12 +20,12 @@
     --call-dim: rgba(92,154,107,0.12);
     --put:      #B65640;
     --put-dim:  rgba(182,86,64,0.12);
-    --atm:      #C9974C;
-    --atm-dim:  rgba(201,151,76,0.12);
+    --atm:      #B59665;
+    --atm-dim:  rgba(181,150,101,0.12);
 
     /* Single accent — ochre, doubles as brand */
-    --brand:    #C9974C;
-    --brand-dim:rgba(201,151,76,0.14);
+    --brand:    #B59665;
+    --brand-dim:rgba(181,150,101,0.14);
 
     /* Text — strict 3 levels, warm grays */
     --text-hi:  #F3EEE3;
@@ -54,7 +54,7 @@
   ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 0; }
   ::-webkit-scrollbar-thumb:hover { background: var(--text-lo); }
 
-  ::selection { background: rgba(201,151,76,0.28); }
+  ::selection { background: rgba(181,150,101,0.28); }
   :focus-visible { outline: 1px solid var(--brand); outline-offset: 2px; }
 
   .num {
@@ -101,8 +101,8 @@
   .cc.put  { color: var(--put); }
   .cc.atm  { color: var(--atm); }
   .cc.brand{ color: var(--brand); }
-  .cc.ask  { font-weight: 600; color: var(--text-hi); cursor: pointer; }
-  .cc.ask:hover { color: var(--atm); text-decoration: underline; }
+  .cc.tradeable  { font-weight: 600; color: var(--text-hi); cursor: pointer; }
+  .cc.tradeable:hover { color: var(--atm); text-decoration: underline; }
 
   .strike-cell {
     font-family: var(--font-mono);
@@ -123,7 +123,7 @@
   .strike-cell.atm {
     color: var(--atm);
     background: var(--atm-dim);
-    border-color: rgba(201,151,76,0.25);
+    border-color: rgba(181,150,101,0.25);
   }
 
   .chain-header {
