@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "./Logo";
+import { useAccountStore } from "../lib/store/account";
+import { fmtN } from "../lib/pricing";
 
 const TABS = [
   { label: "Chain", href: "/options" },
@@ -11,6 +13,8 @@ const TABS = [
 
 export function AppHeader({ children }: { children?: React.ReactNode }) {
   const pathname = usePathname();
+  const balance = useAccountStore(s => s.balance);
+  const collateralLocked = useAccountStore(s => s.collateralLocked);
 
   return (
     <header style={{
@@ -35,6 +39,17 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           </Link>
         ))}
       </div>
+      <div style={{ width: 1, height: 20, background: "var(--border-default)" }} />
+
+      <Link href="/portfolio" title="Go to portfolio" style={{
+        display: "flex", alignItems: "center", gap: 6, textDecoration: "none",
+      }}>
+        <span style={{ fontSize: 10, color: "var(--text-lo)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Balance</span>
+        <span className="num" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-hi)" }}>${fmtN(balance,2)}</span>
+        {collateralLocked > 0 && (
+          <span className="num" style={{ fontSize: 10, color: "var(--atm)" }}>(${fmtN(collateralLocked,2)} locked)</span>
+        )}
+      </Link>
       <div style={{ width: 1, height: 20, background: "var(--border-default)" }} />
 
       {children}
