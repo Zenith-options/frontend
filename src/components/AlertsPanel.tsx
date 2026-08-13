@@ -1,14 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAlertsStore, type AlertDirection } from "../lib/store/alerts";
 
 export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
   const alerts = useAlertsStore(s => s.alerts.filter(a => a.sym === sym));
   const addAlert = useAlertsStore(s => s.addAlert);
   const removeAlert = useAlertsStore(s => s.removeAlert);
+  const markTriggered = useAlertsStore(s => s.markTriggered);
   const [price, setPrice] = useState(() => spot.toFixed(4));
   const [direction, setDirection] = useState<AlertDirection>("above");
+
+  // Evaluate this symbol's still-active alerts against the live spot on every tick.
+  useEffect(() => {
+    for (const a of alerts) {
+      if (a.triggeredAt) continue;
+      const hit = a.direction === "above" ? spot >= a.targetPrice : spot <= a.targetPrice;
+      if (hit) markTriggered(a.id);
+    }
+  }, [spot, alerts, markTriggered]);
 
   const submit = () => {
     const target = parseFloat(price);
