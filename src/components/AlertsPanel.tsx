@@ -12,6 +12,13 @@ export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
   const [price, setPrice] = useState(() => spot.toFixed(4));
   const [direction, setDirection] = useState<AlertDirection>("above");
 
+  // Re-seed the default price whenever the selected underlying changes —
+  // otherwise switching from XLM to BTC leaves the form showing a stale
+  // ~$0.12 default in a market where that's meaningless.
+  useEffect(() => {
+    setPrice(spot.toFixed(4));
+  }, [sym]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Evaluate this symbol's still-active alerts against the live spot on every tick.
   useEffect(() => {
     for (const a of alerts) {
