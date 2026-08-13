@@ -14,10 +14,13 @@ interface Props {
 
 export function ConfirmDialog({ title, confirmLabel, onConfirm, onCancel, disabled, disabledReason, children }: Props) {
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+      if (e.key === "Enter" && !disabled) onConfirm();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  }, [onCancel, onConfirm, disabled]);
 
   return (
     <div onClick={onCancel} style={{
