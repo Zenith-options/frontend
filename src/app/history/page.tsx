@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
@@ -15,6 +16,17 @@ function fmtDate(ts: number) {
 export default function HistoryPage() {
   const records = useHistoryStore(s => s.records);
 
+  const stats = useMemo(() => {
+    const closed = records.filter(r => r.realizedPnl !== undefined);
+    const totalPnl = closed.reduce((s, r) => s + (r.realizedPnl ?? 0), 0);
+    const wins = closed.filter(r => (r.realizedPnl ?? 0) > 0).length;
+    return {
+      closedCount: closed.length,
+      totalPnl,
+      winRate: closed.length > 0 ? (wins / closed.length) * 100 : 0,
+    };
+  }, [records]);
+
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100vh",background:"var(--bg)",overflow:"hidden",fontFamily:"var(--font-sans)"}}>
       <AppHeader>
@@ -29,6 +41,21 @@ export default function HistoryPage() {
           <p style={{fontSize:13,color:"var(--text-mid)",marginBottom:28}}>
             {records.length} record{records.length===1?"":"s"}
           </p>
+
+          {stats.closedCount>0 && (
+            <div style={{display:"flex",gap:0,marginBottom:24,border:"1px solid var(--border-default)",background:"var(--bg-raised)"}}>
+              {[
+                {label:"Closed Trades", value:String(stats.closedCount), color:"var(--text-hi)"},
+                {label:"Total Realized P&L", value:`${stats.totalPnl>=0?"+":"−"}$${fmtN(Math.abs(stats.totalPnl),2)}`, color:stats.totalPnl>=0?"var(--call)":"var(--put)"},
+                {label:"Win Rate", value:`${stats.winRate.toFixed(0)}%`, color:"var(--atm)"},
+              ].map((s,i)=>(
+                <div key={s.label} style={{flex:1,padding:"14px 18px",borderRight:i<2?"1px solid var(--border-default)":"none"}}>
+                  <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)",marginBottom:6}}>{s.label}</div>
+                  <div className="num" style={{fontSize:17,fontWeight:600,color:s.color}}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {records.length===0 ? (
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
