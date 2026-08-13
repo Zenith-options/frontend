@@ -125,6 +125,17 @@ export default function PortfolioPage() {
     setRollExpiry(EXPIRIES.find(e => e.label === rollTarget.expiryLabel) ?? EXPIRIES[2]);
   }, [rollTargetId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const rollPreview = useMemo(() => {
+    if (!rollTarget) return null;
+    const market = MARKETS.find(m => m.sym === rollTarget.sym) ?? MARKETS[0];
+    const spot = spots[rollTarget.sym] ?? market.price;
+    const newStrike = Math.round(rollTarget.strike * (1 + rollStrikeOffsetPct / 100) * 10000) / 10000;
+    const t = rollExpiry.days / 365;
+    const vol = smileVol(market.vol, newStrike / spot);
+    const greeks = bs(spot, newStrike, vol, t, rollTarget.side === "call");
+    return { spot, newStrike, greeks };
+  }, [rollTarget, rollStrikeOffsetPct, rollExpiry, spots]);
+
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100vh",background:"var(--bg)",overflow:"hidden",fontFamily:"var(--font-sans)"}}>
       <AppHeader>
@@ -310,6 +321,14 @@ export default function PortfolioPage() {
                                   ))}
                                 </div>
                               </div>
+                              {rollPreview && (
+                                <div>
+                                  <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>New Premium</div>
+                                  <span className="num" style={{fontSize:13,fontWeight:600,color:"var(--text-hi)"}}>
+                                    ${fmtN(rollPreview.greeks.premium*p.contracts,2)}
+                                  </span>
+                                </div>
+                              )}
                               <button onClick={()=>setRollTargetId(null)} style={{
                                 marginLeft:"auto",fontSize:11,color:"var(--text-lo)",background:"none",
                                 border:"1px solid var(--border-default)",padding:"5px 12px",cursor:"pointer"}}>Cancel</button>
