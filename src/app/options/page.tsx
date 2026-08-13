@@ -39,7 +39,7 @@ function OptionsPageContent() {
   const addHistoryRecord = useHistoryStore(s=>s.addRecord);
   const balance = useAccountStore(s=>s.balance);
   const [contracts, setContracts] = useState("1");
-  const [viewTab, setViewTab] = useState<"chain"|"positions">("chain");
+  const [viewTab, setViewTab] = useState<"chain"|"positions"|"strategies">("chain");
   const prevSpotRef = useRef(spot);
 
   const market = MARKETS.find(m=>m.sym===sym)??MARKETS[0];
@@ -210,7 +210,7 @@ function OptionsPageContent() {
         {/* CENTER: CHAIN */}
         <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minWidth:0}}>
           <div style={{display:"flex",borderBottom:"1px solid var(--border-default)",padding:"0 8px",background:"var(--bg-raised)"}}>
-            {(["chain","positions"] as const).map(tab=>(
+            {(["chain","positions","strategies"] as const).map(tab=>(
               <button key={tab} onClick={()=>setViewTab(tab)} style={{
                 padding:"8px 14px",border:"none",background:"transparent",cursor:"pointer",
                 fontSize:12,fontWeight:500,textTransform:"capitalize",
@@ -323,6 +323,12 @@ function OptionsPageContent() {
                   </tbody>
                 </table>
               )}
+            </div>
+          )}
+
+          {viewTab==="strategies"&&(
+            <div style={{flex:1,overflowY:"auto",padding:16}}>
+              <div style={{fontSize:11,color:"var(--text-lo)"}}>Strategy builder coming together — next commit.</div>
             </div>
           )}
 
