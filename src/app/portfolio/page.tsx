@@ -133,7 +133,21 @@ export default function PortfolioPage() {
     const t = rollExpiry.days / 365;
     const vol = smileVol(market.vol, newStrike / spot);
     const greeks = bs(spot, newStrike, vol, t, rollTarget.side === "call");
-    return { spot, newStrike, greeks };
+    const newPremium = greeks.premium * rollTarget.contracts;
+    const newCollateral = rollTarget.positionType === "short"
+      ? collateralRequired(rollTarget.side, rollTarget.contracts, newStrike, spot) : 0;
+
+    // Same cash math as handleClose (old leg) + execTrade (new leg), just summed
+    // into one net figure instead of applied as two separate trades.
+    const closeCashEffect = rollTarget.positionType === "short"
+      ? rollTarget.collateral - rollTarget.currentPremium
+      : rollTarget.currentPremium;
+    const openCashEffect = rollTarget.positionType === "short"
+      ? newPremium - newCollateral
+      : -newPremium;
+    const netCashEffect = closeCashEffect + openCashEffect;
+
+    return { spot, newStrike, greeks, newPremium, newCollateral, netCashEffect };
   }, [rollTarget, rollStrikeOffsetPct, rollExpiry, spots]);
 
   return (
@@ -322,12 +336,23 @@ export default function PortfolioPage() {
                                 </div>
                               </div>
                               {rollPreview && (
-                                <div>
-                                  <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>New Premium</div>
-                                  <span className="num" style={{fontSize:13,fontWeight:600,color:"var(--text-hi)"}}>
-                                    ${fmtN(rollPreview.greeks.premium*p.contracts,2)}
-                                  </span>
-                                </div>
+                                <>
+                                  <div>
+                                    <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>New Premium</div>
+                                    <span className="num" style={{fontSize:13,fontWeight:600,color:"var(--text-hi)"}}>
+                                      ${fmtN(rollPreview.newPremium,2)}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>
+                                      {rollPreview.netCashEffect>=0?"Net Credit":"Net Cost"}
+                                    </div>
+                                    <span className="num" style={{fontSize:13,fontWeight:600,
+                                      color:rollPreview.netCashEffect>=0?"var(--call)":"var(--put)"}}>
+                                      ${fmtN(Math.abs(rollPreview.netCashEffect),2)}
+                                    </span>
+                                  </div>
+                                </>
                               )}
                               <button onClick={()=>setRollTargetId(null)} style={{
                                 marginLeft:"auto",fontSize:11,color:"var(--text-lo)",background:"none",
