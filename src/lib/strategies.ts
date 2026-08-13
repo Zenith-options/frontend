@@ -26,4 +26,36 @@ export const STRATEGY_TEMPLATES: StrategyTemplate[] = [
       { side: "put", action: "buy", strikeOffset: 1.0 },
     ],
   },
+  {
+    id: "bull-call-spread",
+    name: "Bull Call Spread",
+    description:
+      "Buy an ATM call, sell a further OTM call to offset the cost. Caps both the upside and the downside — cheaper than a naked long call, bullish but capped.",
+    legs: [
+      { side: "call", action: "buy", strikeOffset: 1.0 },
+      { side: "call", action: "sell", strikeOffset: 1.1 },
+    ],
+  },
+  {
+    id: "bear-put-spread",
+    name: "Bear Put Spread",
+    description:
+      "Buy an ATM put, sell a further OTM put to offset the cost. Bearish but capped, cheaper than a naked long put.",
+    legs: [
+      { side: "put", action: "buy", strikeOffset: 1.0 },
+      { side: "put", action: "sell", strikeOffset: 0.9 },
+    ],
+  },
+  {
+    id: "iron-condor",
+    name: "Iron Condor",
+    description:
+      "Sell an OTM put and OTM call, buy further-out put and call as protection. Collects premium if spot stays in the middle range through expiry; loss is capped by the protective legs.",
+    legs: [
+      { side: "put", action: "buy", strikeOffset: 0.85 },
+      { side: "put", action: "sell", strikeOffset: 0.92 },
+      { side: "call", action: "sell", strikeOffset: 1.08 },
+      { side: "call", action: "buy", strikeOffset: 1.15 },
+    ],
+  },
 ];
