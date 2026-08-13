@@ -3,20 +3,19 @@
 import { useMemo } from "react";
 
 interface VolSmileProps {
-  spot: number;
   baseVol: number;   // e.g. 0.82
   width?: number;
   height?: number;
 }
 
-export function VolSmile({ spot, baseVol, width = 260, height = 110 }: VolSmileProps) {
+export function VolSmile({ baseVol, width = 260, height = 110 }: VolSmileProps) {
   const PAD = { t: 12, r: 12, b: 24, l: 36 };
   const W = width  - PAD.l - PAD.r;
   const H = height - PAD.t - PAD.b;
 
   const data = useMemo(() => {
-    // Generate a realistic crypto vol smile with left skew
-    // Moneyness = strike / spot
+    // Generate a realistic crypto vol smile with left skew, in moneyness
+    // (strike / spot) space — independent of the absolute spot price.
     const moneyness = Array.from({ length: 41 }, (_, i) => 0.70 + i * 0.015);
 
     const smile = moneyness.map(m => {
