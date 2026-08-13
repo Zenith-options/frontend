@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { PayoffDiagram } from "../../components/PayoffDiagram";
 import { VolSmile } from "../../components/VolSmile";
 import { AppHeader } from "../../components/AppHeader";
@@ -30,7 +31,6 @@ function OptionsPageContent() {
   const [trade, setTrade] = useState<TradeState|null>(null);
   const positions = usePositionsStore(s=>s.positions);
   const addPosition = usePositionsStore(s=>s.addPosition);
-  const closePosition = usePositionsStore(s=>s.closePosition);
   const debit = useAccountStore(s=>s.debit);
   const credit = useAccountStore(s=>s.credit);
   const reserveCollateral = useAccountStore(s=>s.reserveCollateral);
@@ -268,16 +268,25 @@ function OptionsPageContent() {
                 <table style={{width:"100%",borderCollapse:"collapse"}}>
                   <thead>
                     <tr style={{borderBottom:"1px solid var(--border-default)"}}>
-                      {["Asset","Side","Strike","Expiry","Qty","Δ","Γ","Θ","V",""].map(h=>(
+                      {["Asset","Type","Side","Strike","Expiry","Qty","Δ","Γ","Θ","V",""].map(h=>(
                         <th key={h} style={{padding:"6px 8px",fontSize:10,fontWeight:500,textTransform:"uppercase",
                           letterSpacing:"0.05em",color:"var(--text-lo)",textAlign:"right",background:"var(--bg-raised)"}}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {positions.map(pos=>(
+                    {positions.map(pos=>{
+                      const sign=pos.positionType==="short"?-1:1;
+                      return(
                       <tr key={pos.id} style={{borderBottom:"1px solid var(--border-subtle)"}}>
                         <td style={{padding:"8px",fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{pos.sym}</td>
+                        <td style={{padding:"8px 4px"}}>
+                          <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",borderRadius:0,
+                            background:pos.positionType==="short"?"var(--put-dim)":"var(--call-dim)",
+                            color:pos.positionType==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
+                            {pos.positionType}
+                          </span>
+                        </td>
                         <td style={{padding:"8px 4px"}}>
                           <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",borderRadius:0,
                             background:pos.side==="call"?"var(--call-dim)":"var(--put-dim)",
@@ -286,19 +295,18 @@ function OptionsPageContent() {
                           </span>
                         </td>
                         {[fmtK(pos.strike),pos.expiryLabel,pos.contracts.toFixed(0),
-                          (pos.delta*pos.contracts).toFixed(3),(pos.gamma*pos.contracts).toFixed(4),
-                          (pos.theta*pos.contracts).toFixed(4),(pos.vega*pos.contracts).toFixed(3)
+                          (sign*pos.delta*pos.contracts).toFixed(3),(sign*pos.gamma*pos.contracts).toFixed(4),
+                          (sign*pos.theta*pos.contracts).toFixed(4),(sign*pos.vega*pos.contracts).toFixed(3)
                         ].map((v,j)=>(
                           <td key={j} className="num" style={{padding:"8px",fontSize:11,textAlign:"right",
                             color:j===5?"var(--put)":"var(--text-hi)"}}>{v}</td>
                         ))}
-                        <td style={{padding:"4px 8px"}}>
-                          <button onClick={()=>closePosition(pos.id)} style={{
-                            fontSize:10,color:"var(--text-lo)",background:"none",border:"1px solid var(--border-default)",
-                            borderRadius:0,padding:"2px 8px",cursor:"pointer"}}>Close</button>
+                        <td style={{padding:"4px 8px",textAlign:"right"}}>
+                          <Link href="/portfolio" style={{fontSize:10,color:"var(--brand)",textDecoration:"none"}}>Manage →</Link>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
