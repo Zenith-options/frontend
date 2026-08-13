@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAlertsStore, type AlertDirection } from "../lib/store/alerts";
+import { requestNotificationPermission, sendNotification } from "../lib/notify";
 
 export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
   const alerts = useAlertsStore(s => s.alerts.filter(a => a.sym === sym));
@@ -16,13 +17,17 @@ export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
     for (const a of alerts) {
       if (a.triggeredAt) continue;
       const hit = a.direction === "above" ? spot >= a.targetPrice : spot <= a.targetPrice;
-      if (hit) markTriggered(a.id);
+      if (hit) {
+        markTriggered(a.id);
+        sendNotification(`${sym} ${a.direction} $${a.targetPrice.toFixed(4)}`, `Spot is now $${spot.toFixed(4)}`);
+      }
     }
-  }, [spot, alerts, markTriggered]);
+  }, [spot, alerts, markTriggered, sym]);
 
   const submit = () => {
     const target = parseFloat(price);
     if (!target || target <= 0) return;
+    requestNotificationPermission();
     addAlert(sym, target, direction);
   };
 
