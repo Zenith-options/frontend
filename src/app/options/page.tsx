@@ -12,6 +12,7 @@ import { usePositionsStore, aggregateGreeks } from "../../lib/store/positions";
 import { useAccountStore } from "../../lib/store/account";
 import { collateralRequired } from "../../lib/collateral";
 import { useHistoryStore } from "../../lib/store/history";
+import { AlertsPanel } from "../../components/AlertsPanel";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
@@ -153,6 +154,8 @@ function OptionsPageContent() {
           background:"var(--bg-raised)"}}>
 
           <VolSmile spot={spot} baseVol={market.vol} width={212} height={110}/>
+
+          <AlertsPanel sym={sym}/>
 
           <div>
             <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--text-lo)",marginBottom:8}}>Market</div>
