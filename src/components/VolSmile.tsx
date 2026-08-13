@@ -107,7 +107,7 @@ export function VolSmile({ spot, baseVol, width = 260, height = 110 }: VolSmileP
             <text key={l.v}
               x={-4} y={l.y}
               textAnchor="end" dominantBaseline="middle"
-              fontSize={8} fontFamily="'JetBrains Mono',monospace"
+              fontSize={8} fontFamily="var(--font-mono)"
               fill="var(--text-lo)"
             >
               {l.label}
@@ -121,7 +121,7 @@ export function VolSmile({ spot, baseVol, width = 260, height = 110 }: VolSmileP
               <text key={m}
                 x={x} y={H + 14}
                 textAnchor="middle"
-                fontSize={8} fontFamily="'JetBrains Mono',monospace"
+                fontSize={8} fontFamily="var(--font-mono)"
                 fill={m === 1.0 ? "rgba(201,151,76,0.6)" : "var(--text-lo)"}
               >
                 {m === 1.0 ? "ATM" : `${Math.round(m * 100)}%`}

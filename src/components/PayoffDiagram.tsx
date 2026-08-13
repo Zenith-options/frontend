@@ -203,7 +203,7 @@ export function PayoffDiagram({
               textAnchor="end"
               dominantBaseline="middle"
               fontSize={9}
-              fontFamily="'JetBrains Mono', monospace"
+              fontFamily="var(--font-mono)"
               fill={l.value === 0 ? "rgba(255,255,255,0.4)"
                   : l.value > 0 ? "rgba(92,154,107,0.7)"
                   : "rgba(182,86,64,0.7)"}
@@ -219,7 +219,7 @@ export function PayoffDiagram({
               x={l.x} y={H + 14}
               textAnchor="middle"
               fontSize={8}
-              fontFamily="'JetBrains Mono', monospace"
+              fontFamily="var(--font-mono)"
               fill="rgba(255,255,255,0.25)"
             >
               {l.label}
@@ -231,7 +231,7 @@ export function PayoffDiagram({
             x={data.strikeX} y={-6}
             textAnchor="middle"
             fontSize={9}
-            fontFamily="'JetBrains Mono', monospace"
+            fontFamily="var(--font-mono)"
             fill="rgba(201,151,76,0.8)"
           >
             K
@@ -242,7 +242,7 @@ export function PayoffDiagram({
             x={data.spotX} y={-6}
             textAnchor="middle"
             fontSize={9}
-            fontFamily="'JetBrains Mono', monospace"
+            fontFamily="var(--font-mono)"
             fill="rgba(255,255,255,0.5)"
           >
             S
@@ -254,7 +254,7 @@ export function PayoffDiagram({
               x={data.breakevenX + 3} y={data.zeroY - 5}
               textAnchor="start"
               fontSize={8}
-              fontFamily="'JetBrains Mono', monospace"
+              fontFamily="var(--font-mono)"
               fill={color} fillOpacity={0.7}
             >
               BE
