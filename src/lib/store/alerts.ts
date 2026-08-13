@@ -38,6 +38,6 @@ export const useAlertsStore = create<AlertsState>()(
           alerts: state.alerts.map((a) => (a.id === id ? { ...a, triggeredAt: Date.now() } : a)),
         })),
     }),
-    { name: "zenith-alerts" }
+    { name: "zenith-alerts", skipHydration: true }
   )
 );
