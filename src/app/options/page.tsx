@@ -56,6 +56,7 @@ function OptionsPageContent() {
   const [contracts, setContracts] = useState("1");
   const [viewTab, setViewTab] = useState<"chain"|"positions"|"strategies"|"surface">("chain");
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyTemplate|null>(null);
+  const [showStrategyConfirm, setShowStrategyConfirm] = useState(false);
   const prevSpotRef = useRef(spot);
 
   const market = MARKETS.find(m=>m.sym===sym)??MARKETS[0];
@@ -170,6 +171,7 @@ function OptionsPageContent() {
       });
     }
     setSelectedStrategy(null);
+    setShowStrategyConfirm(false);
     setViewTab("positions");
   };
 
@@ -434,7 +436,7 @@ function OptionsPageContent() {
                   <div style={{marginTop:16}}>
                     <MultiLegPayoffDiagram legs={pricedLegs} spot={spot} width={420} height={220}/>
                   </div>
-                  <button onClick={execStrategy} disabled={strategyInsufficientFunds} style={{marginTop:12,padding:"10px 20px",
+                  <button onClick={()=>setShowStrategyConfirm(true)} disabled={strategyInsufficientFunds} style={{marginTop:12,padding:"10px 20px",
                     background:"var(--brand)",color:"var(--bg)",border:"none",fontSize:13,fontWeight:700,
                     cursor:strategyInsufficientFunds?"default":"pointer",opacity:strategyInsufficientFunds?0.5:1}}>
                     Execute {selectedStrategy.name} ({pricedLegs.length} legs)
@@ -649,6 +651,35 @@ function OptionsPageContent() {
               <span className="num" style={{color:"var(--text-hi)"}}>{v}</span>
             </div>
           ))}
+        </ConfirmDialog>
+      )}
+
+      {showStrategyConfirm&&selectedStrategy&&(
+        <ConfirmDialog
+          title={`Execute ${selectedStrategy.name}`}
+          confirmLabel="Confirm Execute"
+          onConfirm={execStrategy}
+          onCancel={()=>setShowStrategyConfirm(false)}
+          disabled={strategyInsufficientFunds}
+          disabledReason={strategyInsufficientFunds?`Insufficient balance — needs $${fmtN(strategyRequiredFunds,2)}, have $${fmtN(balance,2)}.`:undefined}
+        >
+          {pricedLegs.map((leg,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12}}>
+              <span style={{color:leg.action==="buy"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>{leg.action} {leg.side}</span>
+              <span className="num" style={{color:"var(--text-mid)"}}>K={fmtK(leg.strike)}</span>
+              <span className="num" style={{color:"var(--text-hi)"}}>${fmtN(leg.greeks.premium*leg.contracts,2)}</span>
+            </div>
+          ))}
+          <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0 0",marginTop:6,borderTop:"1px solid var(--border-default)",fontSize:12}}>
+            <span style={{color:"var(--text-lo)"}}>{strategyNetPremium>=0?"Net Debit":"Net Credit"}</span>
+            <span className="num" style={{color:"var(--text-hi)"}}>${fmtN(Math.abs(strategyNetPremium),2)}</span>
+          </div>
+          {strategyCollateral>0&&(
+            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12}}>
+              <span style={{color:"var(--text-lo)"}}>Collateral Required</span>
+              <span className="num" style={{color:"var(--text-hi)"}}>${fmtN(strategyCollateral,2)}</span>
+            </div>
+          )}
         </ConfirmDialog>
       )}
     </div>
