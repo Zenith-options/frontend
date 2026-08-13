@@ -147,8 +147,14 @@ export default function PortfolioPage() {
       : -newPremium;
     const netCashEffect = closeCashEffect + openCashEffect;
 
-    return { spot, newStrike, greeks, newPremium, newCollateral, netCashEffect };
+    return { spot, newStrike, greeks, newPremium, newCollateral, closeCashEffect, netCashEffect };
   }, [rollTarget, rollStrikeOffsetPct, rollExpiry, spots]);
+
+  // After releasing the old leg's collateral and settling its P&L, does the
+  // resulting balance actually cover what opening the new leg needs?
+  const rollInsufficientFunds = rollTarget && rollPreview
+    ? balance + rollPreview.closeCashEffect < (rollTarget.positionType === "short" ? rollPreview.newCollateral : rollPreview.newPremium)
+    : false;
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100vh",background:"var(--bg)",overflow:"hidden",fontFamily:"var(--font-sans)"}}>
