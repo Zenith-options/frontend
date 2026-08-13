@@ -13,6 +13,7 @@ import { useAccountStore } from "../../lib/store/account";
 import { collateralRequired } from "../../lib/collateral";
 import { useHistoryStore } from "../../lib/store/history";
 import { AlertsPanel } from "../../components/AlertsPanel";
+import { StarButton } from "../../components/StarButton";
 import { StrategyPicker } from "../../components/StrategyPicker";
 import { MultiLegPayoffDiagram } from "../../components/MultiLegPayoffDiagram";
 import { type StrategyTemplate } from "../../lib/strategies";
@@ -162,13 +163,16 @@ function OptionsPageContent() {
       <AppHeader>
         <div style={{display:"flex",gap:1}}>
           {MARKETS.map(m=>(
-            <button key={m.sym} onClick={()=>setSym(m.sym)} style={{
-              padding:"4px 10px",border:"none",cursor:"pointer",
-              fontSize:12,fontWeight:600,transition:"all 120ms",
+            <div key={m.sym} style={{display:"flex",alignItems:"center",
               background:sym===m.sym?"var(--bg-overlay)":"transparent",
-              color:sym===m.sym?"var(--text-hi)":"var(--text-mid)",
-              borderBottom:sym===m.sym?"2px solid var(--brand)":"2px solid transparent",
-            }}>{m.sym}</button>
+              borderBottom:sym===m.sym?"2px solid var(--brand)":"2px solid transparent"}}>
+              <button onClick={()=>setSym(m.sym)} style={{
+                padding:"4px 4px 4px 10px",border:"none",background:"none",cursor:"pointer",
+                fontSize:12,fontWeight:600,transition:"all 120ms",
+                color:sym===m.sym?"var(--text-hi)":"var(--text-mid)",
+              }}>{m.sym}</button>
+              <StarButton sym={m.sym}/>
+            </div>
           ))}
         </div>
         <div style={{width:1,height:20,background:"var(--border-default)"}}/>
