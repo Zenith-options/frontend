@@ -4,12 +4,15 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { PayoffDiagram } from "../components/PayoffDiagram";
 import { Logo } from "../components/Logo";
-import { bs, smileVol, fmtN, fmtK } from "../lib/pricing";
+import { bs, smileVol, fmtN, fmtK, MARKETS } from "../lib/pricing";
+import { useWatchlistStore } from "../lib/store/watchlist";
 
 const XLMPRICE=0.1182, XLMVOL=0.82, T=30/365;
 
 export default function Home() {
   const [spot,setSpot]=useState(XLMPRICE);
+  const favorites=useWatchlistStore(s=>s.favorites);
+  const favMarkets=MARKETS.filter(m=>favorites.includes(m.sym));
 
   useEffect(()=>{
     const id=setInterval(()=>setSpot(p=>Math.max(0.05,p+(Math.random()-0.5)*0.0004)),2000);
@@ -204,6 +207,29 @@ export default function Home() {
           </div>
           <div style={{fontSize:11,color:"var(--text-lo)"}}>Click ask price to trade</div>
         </div>
+      </section>
+
+      {/* WATCHLIST */}
+      <section style={{maxWidth:1080,margin:"0 auto",padding:"0 24px 64px"}}>
+        <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.12em",color:"var(--text-lo)",marginBottom:8}}>
+          Watchlist
+        </div>
+        {favMarkets.length===0 ? (
+          <p style={{fontSize:13,color:"var(--text-mid)"}}>
+            Star a market on the <Link href="/options" style={{color:"var(--brand)"}}>options chain</Link> to see it here.
+          </p>
+        ) : (
+          <div style={{display:"flex",gap:0,border:"1px solid var(--border-default)",background:"var(--bg-raised)"}}>
+            {favMarkets.map((m,i)=>(
+              <Link key={m.sym} href={`/options?u=${m.sym}`} style={{flex:1,padding:"14px 18px",textDecoration:"none",
+                borderRight:i<favMarkets.length-1?"1px solid var(--border-default)":"none"}}>
+                <div style={{fontSize:12,fontWeight:600,color:"var(--text-hi)",marginBottom:4}}>{m.sym}</div>
+                <div className="num" style={{fontSize:15,fontWeight:600,color:"var(--text-hi)"}}>{fmtK(m.sym==="XLM"?spot:m.price)}</div>
+                <div style={{fontSize:10,color:"var(--text-lo)"}}>IV {Math.round(m.vol*100)}%</div>
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* HOW IT WORKS — no cards, just structured text */}
