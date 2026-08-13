@@ -6,52 +6,11 @@ import { PayoffDiagram } from "../../components/PayoffDiagram";
 import { VolSmile } from "../../components/VolSmile";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
-
-function normCDF(x: number) {
-  if (x < -7) return 0; if (x > 7) return 1;
-  const k = 1 / (1 + 0.2316419 * Math.abs(x));
-  const p = k*(0.31938153+k*(-0.356563782+k*(1.781477937+k*(-1.821255978+k*1.330274429))));
-  const pdf = Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI);
-  return x >= 0 ? 1 - pdf*p : pdf*p;
-}
-function normPDF(x: number) { return Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI); }
-
-interface Greeks { premium:number; delta:number; gamma:number; theta:number; vega:number; iv:number; }
-
-function bs(S:number, K:number, vol:number, t:number, isCall:boolean): Greeks {
-  if (t <= 0) {
-    const p = isCall ? Math.max(0,S-K) : Math.max(0,K-S);
-    return {premium:p,delta:isCall?1:-1,gamma:0,theta:0,vega:0,iv:vol};
-  }
-  const st=Math.sqrt(t),d1=(Math.log(S/K)+(0.05+0.5*vol*vol)*t)/(vol*st),d2=d1-vol*st;
-  const disc=Math.exp(-0.05*t),pdf=normPDF(d1);
-  const premium=isCall?S*normCDF(d1)-K*disc*normCDF(d2):K*disc*normCDF(-d2)-S*normCDF(-d1);
-  const delta=isCall?normCDF(d1):normCDF(d1)-1;
-  const gamma=pdf/(S*vol*st);
-  const theta=isCall?(-(S*pdf*vol)/(2*st)-0.05*K*disc*normCDF(d2))/365:(-(S*pdf*vol)/(2*st)+0.05*K*disc*normCDF(-d2))/365;
-  return {premium:Math.max(0,premium),delta,gamma,theta,vega:S*pdf*st/100,iv:vol};
-}
-
-function smileVol(base:number,m:number){
-  return Math.max(0.1,base-0.15*(m-1)+0.08*(m-1)**2+0.12*Math.max(0,(Math.abs(m-1)-0.15)**2));
-}
-
-const MARKETS=[
-  {sym:"XLM",price:0.1182,vol:0.82},{sym:"BTC",price:67420.5,vol:0.65},
-  {sym:"ETH",price:3512.8,vol:0.72},{sym:"SOL",price:182.45,vol:0.91},
-];
-const EXPIRIES=[
-  {label:"7D",days:7},{label:"14D",days:14},{label:"30D",days:30},
-  {label:"60D",days:60},{label:"90D",days:90},{label:"180D",days:180},
-];
-
-const fmtN=(n:number,d=4)=>n===0?"\u2014":Math.abs(n)<0.0001?n.toExponential(2):n.toFixed(d);
-const fmtSpot=(n:number)=>n>=1000?`$${n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`:`$${n.toFixed(4)}`;
-const fmtK=(n:number)=>n>=1000?n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}):n.toFixed(4);
+import { MARKETS, EXPIRIES, bs, smileVol, fmtN, fmtSpot, fmtK, type Greeks } from "../../lib/pricing";
+import { usePositionsStore } from "../../lib/store/positions";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";}
-interface Position{id:number;sym:string;side:"call"|"put";strike:number;expiry:string;contracts:number;premium:number;delta:number;gamma:number;theta:number;vega:number;}
 
 export default function OptionsPage() {
   const params = useSearchParams();
@@ -59,8 +18,9 @@ export default function OptionsPage() {
   const [expiry, setExpiry] = useState(EXPIRIES[2]);
   const [spot, setSpot] = useState(MARKETS.find(m=>m.sym===sym)!.price);
   const [trade, setTrade] = useState<TradeState|null>(null);
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [posCounter, setPosCounter] = useState(0);
+  const positions = usePositionsStore(s=>s.positions);
+  const addPosition = usePositionsStore(s=>s.addPosition);
+  const closePosition = usePositionsStore(s=>s.closePosition);
   const [contracts, setContracts] = useState("1");
   const [viewTab, setViewTab] = useState<"chain"|"positions">("chain");
   const prevSpotRef = useRef(spot);
@@ -99,12 +59,12 @@ export default function OptionsPage() {
   const execTrade=()=>{
     if(!trade||!tradeGreeks)return;
     const qty=parseFloat(contracts)||1;
-    setPositions(prev=>[...prev,{
-      id:posCounter+1,sym,side:trade.side,strike:trade.row.strike,
-      expiry:expiry.label,contracts:qty,premium:tradeGreeks.premium*qty,
+    addPosition({
+      sym,side:trade.side,strike:trade.row.strike,
+      expiryLabel:expiry.label,expiryDays:expiry.days,
+      contracts:qty,entrySpot:spot,premium:tradeGreeks.premium*qty,
       delta:tradeGreeks.delta,gamma:tradeGreeks.gamma,theta:tradeGreeks.theta,vega:tradeGreeks.vega,
-    }]);
-    setPosCounter(c=>c+1);
+    });
     setTrade(null);
     setViewTab("positions");
   };
@@ -295,7 +255,7 @@ export default function OptionsPage() {
                             {pos.side}
                           </span>
                         </td>
-                        {[fmtK(pos.strike),pos.expiry,pos.contracts.toFixed(0),
+                        {[fmtK(pos.strike),pos.expiryLabel,pos.contracts.toFixed(0),
                           (pos.delta*pos.contracts).toFixed(3),(pos.gamma*pos.contracts).toFixed(4),
                           (pos.theta*pos.contracts).toFixed(4),(pos.vega*pos.contracts).toFixed(3)
                         ].map((v,j)=>(
@@ -303,7 +263,7 @@ export default function OptionsPage() {
                             color:j===5?"var(--put)":"var(--text-hi)"}}>{v}</td>
                         ))}
                         <td style={{padding:"4px 8px"}}>
-                          <button onClick={()=>setPositions(p=>p.filter(x=>x.id!==pos.id))} style={{
+                          <button onClick={()=>closePosition(pos.id)} style={{
                             fontSize:10,color:"var(--text-lo)",background:"none",border:"1px solid var(--border-default)",
                             borderRadius:3,padding:"2px 8px",cursor:"pointer"}}>Close</button>
                         </td>

@@ -4,18 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { PayoffDiagram } from "../components/PayoffDiagram";
 import { Logo } from "../components/Logo";
-
-function normCDF(x:number){if(x<-7)return 0;if(x>7)return 1;const k=1/(1+0.2316419*Math.abs(x));const p=k*(0.31938153+k*(-0.356563782+k*(1.781477937+k*(-1.821255978+k*1.330274429))));const pdf=Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI);return x>=0?1-pdf*p:pdf*p;}
-function normPDF(x:number){return Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI);}
-function bs(S:number,K:number,vol:number,t:number,isCall:boolean){
-  if(t<=0)return{premium:isCall?Math.max(0,S-K):Math.max(0,K-S),delta:isCall?1:-1,iv:vol};
-  const st=Math.sqrt(t),d1=(Math.log(S/K)+(0.05+0.5*vol*vol)*t)/(vol*st),d2=d1-vol*st,disc=Math.exp(-0.05*t);
-  return{premium:Math.max(0,isCall?S*normCDF(d1)-K*disc*normCDF(d2):K*disc*normCDF(-d2)-S*normCDF(-d1)),
-    delta:isCall?normCDF(d1):normCDF(d1)-1,iv:vol};
-}
-function smileVol(b:number,m:number){return Math.max(0.1,b-0.15*(m-1)+0.08*(m-1)**2+0.12*Math.max(0,(Math.abs(m-1)-0.15)**2));}
-const fmtN=(n:number,d=4)=>Math.abs(n)<0.0001?n.toExponential(2):n.toFixed(d);
-const fmtK=(n:number)=>n>=100?n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}):n.toFixed(4);
+import { bs, smileVol, fmtN, fmtK } from "../lib/pricing";
 
 const XLMPRICE=0.1182, XLMVOL=0.82, T=30/365;
 
