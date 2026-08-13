@@ -15,6 +15,7 @@ import { useHistoryStore } from "../../lib/store/history";
 import { AlertsPanel } from "../../components/AlertsPanel";
 import { StarButton } from "../../components/StarButton";
 import { useWatchlistStore } from "../../lib/store/watchlist";
+import { useHydrated } from "../../lib/useHydrated";
 import { StrategyPicker } from "../../components/StrategyPicker";
 import { MultiLegPayoffDiagram } from "../../components/MultiLegPayoffDiagram";
 import { type StrategyTemplate } from "../../lib/strategies";
@@ -45,6 +46,7 @@ function OptionsPageContent() {
   const addHistoryRecord = useHistoryStore(s=>s.addRecord);
   const balance = useAccountStore(s=>s.balance);
   const favorites = useWatchlistStore(s=>s.favorites);
+  const hydrated = useHydrated();
   const [contracts, setContracts] = useState("1");
   const [viewTab, setViewTab] = useState<"chain"|"positions"|"strategies">("chain");
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyTemplate|null>(null);
@@ -61,10 +63,13 @@ function OptionsPageContent() {
     return ()=>clearInterval(id);
   },[sym,market.price]);
 
-  const sortedMarkets=useMemo(()=>[...MARKETS].sort((a,b)=>{
-    const aFav=favorites.includes(a.sym),bFav=favorites.includes(b.sym);
-    return aFav===bFav?0:aFav?-1:1;
-  }),[favorites]);
+  const sortedMarkets=useMemo(()=>{
+    if(!hydrated)return MARKETS; // matches SSR order until this component's own mount effect fires
+    return [...MARKETS].sort((a,b)=>{
+      const aFav=favorites.includes(a.sym),bFav=favorites.includes(b.sym);
+      return aFav===bFav?0:aFav?-1:1;
+    });
+  },[favorites,hydrated]);
 
   const chain=useMemo(():ChainRow[]=>{
     return Array.from({length:21},(_,i)=>{
@@ -246,7 +251,7 @@ function OptionsPageContent() {
             })}
           </div>
 
-          {positions.length>0&&(
+          {hydrated&&positions.length>0&&(
             <div>
               <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--text-lo)",marginBottom:8}}>Portfolio Greeks</div>
               {[{g:"Δ Net Delta",v:portGreeks.delta,dp:3},{g:"Γ Net Gamma",v:portGreeks.gamma,dp:4},
@@ -275,7 +280,7 @@ function OptionsPageContent() {
                 color:viewTab===tab?"var(--text-hi)":"var(--text-lo)",
                 borderBottom:viewTab===tab?"2px solid var(--brand)":"2px solid transparent",
                 marginBottom:-1,
-              }}>{tab}{tab==="positions"&&positions.length>0?` (${positions.length})`:""}</button>
+              }}>{tab}{tab==="positions"&&hydrated&&positions.length>0?` (${positions.length})`:""}</button>
             ))}
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",paddingRight:4}}>
               <span style={{fontSize:10,color:"var(--text-lo)"}}>{sym}-USD · {expiry.label} · {chain.length} strikes · Click ask to buy, bid to write</span>
@@ -435,7 +440,7 @@ function OptionsPageContent() {
             </div>
           )}
 
-          {positions.length>0&&(
+          {hydrated&&positions.length>0&&(
             <div style={{height:36,flexShrink:0,borderTop:"1px solid var(--border-default)",
               display:"flex",alignItems:"center",gap:20,padding:"0 16px",background:"var(--bg-raised)"}}>
               <span style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)"}}>Portfolio</span>
