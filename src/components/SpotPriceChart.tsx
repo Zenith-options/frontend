@@ -43,11 +43,9 @@ export function SpotPriceChart({ history, width = 212, height = 90 }: Props) {
         <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-lo)" }}>
           Price History
         </span>
-        {data && (
-          <span className="num" style={{ fontSize: 11, fontWeight: 600, color: data.color }}>
-            {data.pctChange >= 0 ? "+" : ""}{data.pctChange.toFixed(2)}%
-          </span>
-        )}
+        <span className="num" style={{ fontSize: 11, fontWeight: 600, color: data ? data.color : "var(--text-lo)" }}>
+          {data ? `${data.pctChange >= 0 ? "+" : ""}${data.pctChange.toFixed(2)}%` : "—"}
+        </span>
       </div>
       <div style={{ width, height }}>
         <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
@@ -68,12 +66,10 @@ export function SpotPriceChart({ history, width = 212, height = 90 }: Props) {
           </g>
         </svg>
       </div>
-      {data && (
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-          <span className="num" style={{ fontSize: 9, color: "var(--text-lo)" }}>Low ${fmtPrice(data.lo)}</span>
-          <span className="num" style={{ fontSize: 9, color: "var(--text-lo)" }}>High ${fmtPrice(data.hi)}</span>
-        </div>
-      )}
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+        <span className="num" style={{ fontSize: 9, color: "var(--text-lo)" }}>Low {data ? `$${fmtPrice(data.lo)}` : "—"}</span>
+        <span className="num" style={{ fontSize: 9, color: "var(--text-lo)" }}>High {data ? `$${fmtPrice(data.hi)}` : "—"}</span>
+      </div>
     </div>
   );
 }
