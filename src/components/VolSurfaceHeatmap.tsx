@@ -64,6 +64,15 @@ export function VolSurfaceHeatmap({ baseVol }: Props) {
           ))}
         </tbody>
       </table>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+        <span className="num" style={{ fontSize: 9, color: "var(--text-lo)" }}>{(minIv * 100).toFixed(0)}%</span>
+        <div style={{
+          width: 96, height: 8,
+          background: "linear-gradient(90deg, rgba(181,150,101,0.06), rgba(181,150,101,0.40))",
+        }} />
+        <span className="num" style={{ fontSize: 9, color: "var(--text-lo)" }}>{(maxIv * 100).toFixed(0)}%</span>
+        <span style={{ fontSize: 9, color: "var(--text-lo)", marginLeft: 4 }}>Implied Vol</span>
+      </div>
     </div>
   );
 }
