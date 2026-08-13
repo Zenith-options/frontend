@@ -9,6 +9,7 @@ import { fmtN } from "../lib/pricing";
 const TABS = [
   { label: "Chain", href: "/options" },
   { label: "Portfolio", href: "/portfolio" },
+  { label: "History", href: "/history" },
 ];
 
 export function AppHeader({ children }: { children?: React.ReactNode }) {

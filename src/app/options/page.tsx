@@ -11,6 +11,14 @@ import { MARKETS, EXPIRIES, bs, smileVol, seededRandom, fmtN, fmtSpot, fmtK, typ
 import { usePositionsStore, aggregateGreeks } from "../../lib/store/positions";
 import { useAccountStore } from "../../lib/store/account";
 import { collateralRequired } from "../../lib/collateral";
+import { useHistoryStore } from "../../lib/store/history";
+import { AlertsPanel } from "../../components/AlertsPanel";
+import { StarButton } from "../../components/StarButton";
+import { useWatchlistStore } from "../../lib/store/watchlist";
+import { StrategyPicker } from "../../components/StrategyPicker";
+import { MultiLegPayoffDiagram } from "../../components/MultiLegPayoffDiagram";
+import { type StrategyTemplate } from "../../lib/strategies";
+import { netPremium, type PricedLeg } from "../../lib/payoff";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
@@ -34,9 +42,12 @@ function OptionsPageContent() {
   const debit = useAccountStore(s=>s.debit);
   const credit = useAccountStore(s=>s.credit);
   const reserveCollateral = useAccountStore(s=>s.reserveCollateral);
+  const addHistoryRecord = useHistoryStore(s=>s.addRecord);
   const balance = useAccountStore(s=>s.balance);
+  const favorites = useWatchlistStore(s=>s.favorites);
   const [contracts, setContracts] = useState("1");
-  const [viewTab, setViewTab] = useState<"chain"|"positions">("chain");
+  const [viewTab, setViewTab] = useState<"chain"|"positions"|"strategies">("chain");
+  const [selectedStrategy, setSelectedStrategy] = useState<StrategyTemplate|null>(null);
   const prevSpotRef = useRef(spot);
 
   const market = MARKETS.find(m=>m.sym===sym)??MARKETS[0];
@@ -49,6 +60,11 @@ function OptionsPageContent() {
     },1800);
     return ()=>clearInterval(id);
   },[sym,market.price]);
+
+  const sortedMarkets=useMemo(()=>[...MARKETS].sort((a,b)=>{
+    const aFav=favorites.includes(a.sym),bFav=favorites.includes(b.sym);
+    return aFav===bFav?0:aFav?-1:1;
+  }),[favorites]);
 
   const chain=useMemo(():ChainRow[]=>{
     return Array.from({length:21},(_,i)=>{
@@ -66,6 +82,23 @@ function OptionsPageContent() {
   const portGreeks=useMemo(()=>aggregateGreeks(positions),[positions]);
 
   const qty=Math.max(0.01,parseFloat(contracts)||1);
+
+  const pricedLegs=useMemo(():PricedLeg[]=>{
+    if(!selectedStrategy)return[];
+    return selectedStrategy.legs.map(leg=>{
+      const strike=Math.round(spot*leg.strikeOffset*10000)/10000;
+      const vol=smileVol(market.vol,leg.strikeOffset);
+      const greeks=bs(spot,strike,vol,t,leg.side==="call");
+      return{side:leg.side,action:leg.action,strike,contracts:qty,greeks};
+    });
+  },[selectedStrategy,spot,market.vol,t,qty]);
+
+  const strategyNetPremium=useMemo(()=>netPremium(pricedLegs),[pricedLegs]);
+  const strategyCollateral=useMemo(()=>pricedLegs.reduce((sum,leg)=>
+    leg.action==="sell"?sum+collateralRequired(leg.side,leg.contracts,leg.strike,spot):sum,0
+  ),[pricedLegs,spot]);
+  const strategyRequiredFunds=strategyCollateral+Math.max(0,strategyNetPremium);
+  const strategyInsufficientFunds=pricedLegs.length>0&&balance<strategyRequiredFunds;
   const collateral=trade&&trade.mode==="write"?collateralRequired(trade.side,qty,trade.row.strike,spot):0;
   const requiredFunds=trade?(trade.mode==="write"?collateral:(tradeGreeks?.premium??0)*qty):0;
   const insufficientFunds=balance<requiredFunds;
@@ -82,6 +115,10 @@ function OptionsPageContent() {
         delta:tradeGreeks.delta,gamma:tradeGreeks.gamma,theta:tradeGreeks.theta,vega:tradeGreeks.vega,
       });
       credit(totalPremium);
+      addHistoryRecord({
+        sym,side:trade.side,positionType:"short",action:"open",
+        strike:trade.row.strike,expiryLabel:expiry.label,contracts:qty,premium:totalPremium,
+      });
     }else{
       addPosition({
         sym,side:trade.side,positionType:"long",strike:trade.row.strike,
@@ -90,8 +127,37 @@ function OptionsPageContent() {
         delta:tradeGreeks.delta,gamma:tradeGreeks.gamma,theta:tradeGreeks.theta,vega:tradeGreeks.vega,
       });
       debit(totalPremium);
+      addHistoryRecord({
+        sym,side:trade.side,positionType:"long",action:"open",
+        strike:trade.row.strike,expiryLabel:expiry.label,contracts:qty,premium:totalPremium,
+      });
     }
     setTrade(null);
+    setViewTab("positions");
+  };
+
+  const execStrategy=()=>{
+    if(!selectedStrategy||pricedLegs.length===0||strategyInsufficientFunds)return;
+    if(strategyCollateral>0&&!reserveCollateral(strategyCollateral))return;
+    const strategyId=`strat-${Date.now()}`;
+    for(const leg of pricedLegs){
+      const legPremium=leg.greeks.premium*leg.contracts;
+      const positionType=leg.action==="buy"?"long":"short";
+      const legCollateral=leg.action==="sell"?collateralRequired(leg.side,leg.contracts,leg.strike,spot):0;
+      addPosition({
+        sym,side:leg.side,positionType,strike:leg.strike,
+        expiryLabel:expiry.label,expiryDays:expiry.days,
+        contracts:leg.contracts,entrySpot:spot,premium:legPremium,collateral:legCollateral,
+        delta:leg.greeks.delta,gamma:leg.greeks.gamma,theta:leg.greeks.theta,vega:leg.greeks.vega,
+        strategyId,
+      });
+      if(leg.action==="buy")debit(legPremium);else credit(legPremium);
+      addHistoryRecord({
+        sym,side:leg.side,positionType,action:"open",
+        strike:leg.strike,expiryLabel:expiry.label,contracts:leg.contracts,premium:legPremium,
+      });
+    }
+    setSelectedStrategy(null);
     setViewTab("positions");
   };
 
@@ -103,14 +169,17 @@ function OptionsPageContent() {
       {/* TOP BAR */}
       <AppHeader>
         <div style={{display:"flex",gap:1}}>
-          {MARKETS.map(m=>(
-            <button key={m.sym} onClick={()=>setSym(m.sym)} style={{
-              padding:"4px 10px",border:"none",cursor:"pointer",
-              fontSize:12,fontWeight:600,transition:"all 120ms",
+          {sortedMarkets.map(m=>(
+            <div key={m.sym} style={{display:"flex",alignItems:"center",
               background:sym===m.sym?"var(--bg-overlay)":"transparent",
-              color:sym===m.sym?"var(--text-hi)":"var(--text-mid)",
-              borderBottom:sym===m.sym?"2px solid var(--brand)":"2px solid transparent",
-            }}>{m.sym}</button>
+              borderBottom:sym===m.sym?"2px solid var(--brand)":"2px solid transparent"}}>
+              <button onClick={()=>setSym(m.sym)} style={{
+                padding:"4px 4px 4px 10px",border:"none",background:"none",cursor:"pointer",
+                fontSize:12,fontWeight:600,transition:"all 120ms",
+                color:sym===m.sym?"var(--text-hi)":"var(--text-mid)",
+              }}>{m.sym}</button>
+              <StarButton sym={m.sym}/>
+            </div>
           ))}
         </div>
         <div style={{width:1,height:20,background:"var(--border-default)"}}/>
@@ -143,6 +212,8 @@ function OptionsPageContent() {
           background:"var(--bg-raised)"}}>
 
           <VolSmile spot={spot} baseVol={market.vol} width={212} height={110}/>
+
+          <AlertsPanel sym={sym} spot={spot}/>
 
           <div>
             <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--text-lo)",marginBottom:8}}>Market</div>
@@ -197,7 +268,7 @@ function OptionsPageContent() {
         {/* CENTER: CHAIN */}
         <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minWidth:0}}>
           <div style={{display:"flex",borderBottom:"1px solid var(--border-default)",padding:"0 8px",background:"var(--bg-raised)"}}>
-            {(["chain","positions"] as const).map(tab=>(
+            {(["chain","positions","strategies"] as const).map(tab=>(
               <button key={tab} onClick={()=>setViewTab(tab)} style={{
                 padding:"8px 14px",border:"none",background:"transparent",cursor:"pointer",
                 fontSize:12,fontWeight:500,textTransform:"capitalize",
@@ -309,6 +380,57 @@ function OptionsPageContent() {
                     })}
                   </tbody>
                 </table>
+              )}
+            </div>
+          )}
+
+          {viewTab==="strategies"&&(
+            <div style={{flex:1,overflowY:"auto",padding:16,display:"grid",gridTemplateColumns:"280px 1fr",gap:16}}>
+              <StrategyPicker selectedId={selectedStrategy?.id??null} onSelect={setSelectedStrategy}/>
+
+              {selectedStrategy&&(
+                <div>
+                  <div style={{fontSize:14,fontWeight:700,color:"var(--text-hi)",marginBottom:12}}>{selectedStrategy.name}</div>
+                  {pricedLegs.map((leg,i)=>(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",
+                      borderBottom:"1px solid var(--border-subtle)"}}>
+                      <span style={{fontSize:11,color:leg.action==="buy"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>
+                        {leg.action} {leg.side}
+                      </span>
+                      <span className="num" style={{fontSize:11,color:"var(--text-mid)"}}>K={fmtK(leg.strike)}</span>
+                      <span className="num" style={{fontSize:11,color:"var(--text-hi)"}}>${fmtN(leg.greeks.premium,4)}</span>
+                    </div>
+                  ))}
+                  <div style={{display:"flex",gap:16,marginTop:10}}>
+                    <div>
+                      <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)"}}>
+                        {strategyNetPremium>=0?"Net Debit":"Net Credit"}
+                      </div>
+                      <div className="num" style={{fontSize:13,fontWeight:600,color:strategyNetPremium>=0?"var(--put)":"var(--call)"}}>
+                        ${fmtN(Math.abs(strategyNetPremium),2)}
+                      </div>
+                    </div>
+                    {strategyCollateral>0&&(
+                      <div>
+                        <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)"}}>Collateral Required</div>
+                        <div className="num" style={{fontSize:13,fontWeight:600,color:"var(--atm)"}}>${fmtN(strategyCollateral,2)}</div>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{marginTop:16}}>
+                    <MultiLegPayoffDiagram legs={pricedLegs} spot={spot} width={420} height={220}/>
+                  </div>
+                  <button onClick={execStrategy} disabled={strategyInsufficientFunds} style={{marginTop:12,padding:"10px 20px",
+                    background:"var(--brand)",color:"var(--bg)",border:"none",fontSize:13,fontWeight:700,
+                    cursor:strategyInsufficientFunds?"default":"pointer",opacity:strategyInsufficientFunds?0.5:1}}>
+                    Execute {selectedStrategy.name} ({pricedLegs.length} legs)
+                  </button>
+                  {strategyInsufficientFunds&&(
+                    <div style={{marginTop:6,fontSize:11,color:"var(--put)"}}>
+                      Insufficient balance — needs ${fmtN(strategyRequiredFunds,2)}, have ${fmtN(balance,2)}.
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}

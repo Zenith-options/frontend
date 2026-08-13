@@ -6,6 +6,7 @@ import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
 import { usePositionsStore, aggregateGreeks, type Position } from "../../lib/store/positions";
 import { useAccountStore } from "../../lib/store/account";
+import { useHistoryStore } from "../../lib/store/history";
 import { MARKETS, bs, smileVol, fmtN } from "../../lib/pricing";
 
 interface Marked extends Position {
@@ -28,6 +29,7 @@ export default function PortfolioPage() {
   const releaseCollateral = useAccountStore(s => s.releaseCollateral);
   const credit = useAccountStore(s => s.credit);
   const debit = useAccountStore(s => s.debit);
+  const addHistoryRecord = useHistoryStore(s => s.addRecord);
 
   // Tick every underlying's spot so open positions can be marked-to-market live,
   // same random-walk model the chain page uses.
@@ -64,6 +66,23 @@ export default function PortfolioPage() {
 
   const totalPnl = useMemo(() => marked.reduce((s, p) => s + p.pnl, 0), [marked]);
 
+  const strategyGroups = useMemo(() => {
+    const byId = new Map<string, Marked[]>();
+    for (const p of marked) {
+      if (!p.strategyId) continue;
+      if (!byId.has(p.strategyId)) byId.set(p.strategyId, []);
+      byId.get(p.strategyId)!.push(p);
+    }
+    return Array.from(byId.entries()).map(([id, legs]) => ({
+      id, legs,
+      sym: legs[0].sym,
+      totalPnl: legs.reduce((s, l) => s + l.pnl, 0),
+      totalCollateral: legs.reduce((s, l) => s + l.collateral, 0),
+    }));
+  }, [marked]);
+
+  const soloPositions = useMemo(() => marked.filter(p => !p.strategyId), [marked]);
+
   const netGreeks = useMemo(() => aggregateGreeks(
     marked.map(p => ({ ...p, delta: p.liveDelta, gamma: p.liveGamma, theta: p.liveTheta, vega: p.liveVega }))
   ), [marked]);
@@ -78,7 +97,16 @@ export default function PortfolioPage() {
     } else {
       credit(p.currentPremium);
     }
+    addHistoryRecord({
+      sym: p.sym, side: p.side, positionType: p.positionType, action: "close",
+      strike: p.strike, expiryLabel: p.expiryLabel, contracts: p.contracts,
+      premium: p.currentPremium, realizedPnl: p.pnl,
+    });
     closePosition(p.id);
+  };
+
+  const handleCloseStrategy = (legs: Marked[]) => {
+    for (const leg of legs) handleClose(leg);
   };
 
   return (
@@ -116,6 +144,40 @@ export default function PortfolioPage() {
             ))}
           </div>
 
+          {strategyGroups.length>0 && (
+            <div style={{marginBottom:24,display:"flex",flexDirection:"column",gap:8}}>
+              {strategyGroups.map(g=>(
+                <div key={g.id} style={{border:"1px solid var(--border-default)",background:"var(--bg-raised)",padding:"12px 16px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <div style={{fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{g.sym} Strategy · {g.legs.length} legs</div>
+                    <button onClick={()=>handleCloseStrategy(g.legs)} style={{
+                      fontSize:10,color:"var(--text-lo)",background:"none",border:"1px solid var(--border-default)",
+                      padding:"2px 8px",cursor:"pointer"}}>Close all legs</button>
+                  </div>
+                  {g.legs.map(leg=>(
+                    <div key={leg.id} style={{display:"flex",justifyContent:"space-between",padding:"2px 0",fontSize:11}}>
+                      <span style={{color:leg.positionType==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
+                        {leg.positionType} {leg.side}
+                      </span>
+                      <span className="num" style={{color:"var(--text-mid)"}}>K={leg.strike.toFixed(4)}</span>
+                      <span className="num" style={{color:leg.pnl>=0?"var(--call)":"var(--put)"}}>
+                        {leg.pnl>=0?"+":"−"}${fmtN(Math.abs(leg.pnl),2)}
+                      </span>
+                    </div>
+                  ))}
+                  <div style={{display:"flex",justifyContent:"space-between",marginTop:8,paddingTop:8,borderTop:"1px solid var(--border-subtle)"}}>
+                    <span style={{fontSize:11,color:"var(--text-lo)"}}>
+                      {g.totalCollateral>0?`Collateral: $${fmtN(g.totalCollateral,2)}`:""}
+                    </span>
+                    <span className="num" style={{fontSize:12,fontWeight:600,color:g.totalPnl>=0?"var(--call)":"var(--put)"}}>
+                      Combined: {g.totalPnl>=0?"+":"−"}${fmtN(Math.abs(g.totalPnl),2)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {marked.length===0 ? (
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
               padding:"80px 0",border:"1px solid var(--border-subtle)",background:"var(--bg-raised)",gap:12}}>
@@ -124,7 +186,7 @@ export default function PortfolioPage() {
                 Open the options chain →
               </Link>
             </div>
-          ) : (
+          ) : soloPositions.length===0 ? null : (
             <div style={{border:"1px solid var(--border-default)",background:"var(--bg-raised)",overflowX:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse",minWidth:940}}>
                 <thead>
@@ -136,7 +198,7 @@ export default function PortfolioPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {marked.map(p=>{
+                  {soloPositions.map(p=>{
                     const expired = p.tRemaining<=0;
                     const sign = p.positionType==="short"?-1:1;
                     return (

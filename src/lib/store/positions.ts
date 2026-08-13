@@ -24,6 +24,8 @@ export interface Position {
   vega: number;
   openedAt: number;
   expiresAt: number;
+  /** Shared across every leg opened together as one multi-leg strategy. Undefined for a plain single-leg trade. */
+  strategyId?: string;
 }
 
 type NewPosition = Omit<Position, "id" | "openedAt" | "expiresAt"> & { expiryDays: number };
