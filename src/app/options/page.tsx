@@ -8,6 +8,7 @@ import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
 import { MARKETS, EXPIRIES, bs, smileVol, seededRandom, fmtN, fmtSpot, fmtK, type Greeks } from "../../lib/pricing";
 import { usePositionsStore, aggregateGreeks } from "../../lib/store/positions";
+import { useAccountStore } from "../../lib/store/account";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";}
@@ -29,6 +30,7 @@ function OptionsPageContent() {
   const positions = usePositionsStore(s=>s.positions);
   const addPosition = usePositionsStore(s=>s.addPosition);
   const closePosition = usePositionsStore(s=>s.closePosition);
+  const debit = useAccountStore(s=>s.debit);
   const [contracts, setContracts] = useState("1");
   const [viewTab, setViewTab] = useState<"chain"|"positions">("chain");
   const prevSpotRef = useRef(spot);
@@ -62,12 +64,14 @@ function OptionsPageContent() {
   const execTrade=()=>{
     if(!trade||!tradeGreeks)return;
     const qty=parseFloat(contracts)||1;
+    const totalPremium=tradeGreeks.premium*qty;
     addPosition({
-      sym,side:trade.side,strike:trade.row.strike,
+      sym,side:trade.side,positionType:"long",strike:trade.row.strike,
       expiryLabel:expiry.label,expiryDays:expiry.days,
-      contracts:qty,entrySpot:spot,premium:tradeGreeks.premium*qty,
+      contracts:qty,entrySpot:spot,premium:totalPremium,collateral:0,
       delta:tradeGreeks.delta,gamma:tradeGreeks.gamma,theta:tradeGreeks.theta,vega:tradeGreeks.vega,
     });
+    debit(totalPremium);
     setTrade(null);
     setViewTab("positions");
   };
