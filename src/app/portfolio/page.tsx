@@ -6,6 +6,7 @@ import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
 import { usePositionsStore, aggregateGreeks, type Position } from "../../lib/store/positions";
 import { useAccountStore } from "../../lib/store/account";
+import { useHistoryStore } from "../../lib/store/history";
 import { MARKETS, bs, smileVol, fmtN } from "../../lib/pricing";
 
 interface Marked extends Position {
@@ -28,6 +29,7 @@ export default function PortfolioPage() {
   const releaseCollateral = useAccountStore(s => s.releaseCollateral);
   const credit = useAccountStore(s => s.credit);
   const debit = useAccountStore(s => s.debit);
+  const addHistoryRecord = useHistoryStore(s => s.addRecord);
 
   // Tick every underlying's spot so open positions can be marked-to-market live,
   // same random-walk model the chain page uses.
