@@ -11,7 +11,7 @@ import { usePositionsStore, aggregateGreeks } from "../../lib/store/positions";
 import { useAccountStore } from "../../lib/store/account";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
-interface TradeState{row:ChainRow;side:"call"|"put";}
+interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
 
 export default function OptionsPage() {
   return (
@@ -188,7 +188,7 @@ function OptionsPageContent() {
               }}>{tab}{tab==="positions"&&positions.length>0?` (${positions.length})`:""}</button>
             ))}
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",paddingRight:4}}>
-              <span style={{fontSize:10,color:"var(--text-lo)"}}>{sym}-USD · {expiry.label} · {chain.length} strikes · Click ask to trade</span>
+              <span style={{fontSize:10,color:"var(--text-lo)"}}>{sym}-USD · {expiry.label} · {chain.length} strikes · Click ask to buy, bid to write</span>
             </div>
           </div>
 
@@ -212,8 +212,10 @@ function OptionsPageContent() {
                     style={{background:isAtm?"var(--atm-dim)":undefined}}>
                     <div className="cc">{vol}</div>
                     <div className="cc">{oi.toLocaleString()}</div>
-                    <div className="cc">{fmtN(Math.max(0,row.call.premium-sp))}</div>
-                    <div className="cc ask call" title="Click to buy" onClick={()=>setTrade({row,side:"call"})}>
+                    <div className="cc tradeable call" title="Click to write (sell)" onClick={()=>setTrade({row,side:"call",mode:"write"})}>
+                      {fmtN(Math.max(0,row.call.premium-sp))}
+                    </div>
+                    <div className="cc tradeable call" title="Click to buy" onClick={()=>setTrade({row,side:"call",mode:"buy"})}>
                       {fmtN(row.call.premium+sp)}
                     </div>
                     <div className="cc brand">{(row.call.iv*100).toFixed(1)}</div>
@@ -222,10 +224,12 @@ function OptionsPageContent() {
                       {isAtm&&<div style={{fontSize:7,marginTop:1,opacity:0.6}}>ATM</div>}
                     </div>
                     <div className="cc brand">{(row.put.iv*100).toFixed(1)}</div>
-                    <div className="cc ask put" title="Click to buy" onClick={()=>setTrade({row,side:"put"})}>
+                    <div className="cc tradeable put" title="Click to buy" onClick={()=>setTrade({row,side:"put",mode:"buy"})}>
                       {fmtN(row.put.premium+sp)}
                     </div>
-                    <div className="cc">{fmtN(Math.max(0,row.put.premium-sp))}</div>
+                    <div className="cc tradeable put" title="Click to write (sell)" onClick={()=>setTrade({row,side:"put",mode:"write"})}>
+                      {fmtN(Math.max(0,row.put.premium-sp))}
+                    </div>
                     <div className="cc">{oi.toLocaleString()}</div>
                     <div className="cc">{vol}</div>
                   </div>
@@ -433,7 +437,7 @@ function OptionsPageContent() {
           Black-Scholes · r=5.0% · Vol smile applied · {chain.length} strikes
         </span>
         <span style={{fontSize:10,color:"var(--text-lo)"}}>·</span>
-        <span style={{fontSize:10,color:"var(--text-lo)"}}>Click <span style={{color:"var(--call)"}}>call ask</span> or <span style={{color:"var(--put)"}}>put ask</span> to open trade panel</span>
+        <span style={{fontSize:10,color:"var(--text-lo)"}}>Click an <b>ask</b> to buy, a <b>bid</b> to write (sell) and collect premium</span>
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
           <div style={{width:5,height:5,borderRadius:"50%",background:"var(--call)",opacity:0.8}}/>
           <span style={{fontSize:10,color:"var(--text-lo)"}}>Live · Stellar Testnet</span>

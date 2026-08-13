@@ -101,8 +101,8 @@
   .cc.put  { color: var(--put); }
   .cc.atm  { color: var(--atm); }
   .cc.brand{ color: var(--brand); }
-  .cc.ask  { font-weight: 600; color: var(--text-hi); cursor: pointer; }
-  .cc.ask:hover { color: var(--atm); text-decoration: underline; }
+  .cc.tradeable  { font-weight: 600; color: var(--text-hi); cursor: pointer; }
+  .cc.tradeable:hover { color: var(--atm); text-decoration: underline; }
 
   .strike-cell {
     font-family: var(--font-mono);
