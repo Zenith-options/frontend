@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "./Logo";
-import { useAccountStore } from "../lib/store/account";
+import { useAccountStore, STARTING_BALANCE } from "../lib/store/account";
 import { fmtN } from "../lib/pricing";
+import { useHydrated } from "../lib/useHydrated";
 
 const TABS = [
   { label: "Chain", href: "/options" },
@@ -14,8 +15,15 @@ const TABS = [
 
 export function AppHeader({ children }: { children?: React.ReactNode }) {
   const pathname = usePathname();
-  const balance = useAccountStore(s => s.balance);
-  const collateralLocked = useAccountStore(s => s.collateralLocked);
+  const hydrated = useHydrated();
+  const storeBalance = useAccountStore(s => s.balance);
+  const storeCollateralLocked = useAccountStore(s => s.collateralLocked);
+  // Account store starts at the same $50,000 default on server and client,
+  // but a returning visitor's real (persisted) balance can differ — gate it
+  // so this component's own first client render always matches its SSR
+  // output regardless of when the store actually rehydrates.
+  const balance = hydrated ? storeBalance : STARTING_BALANCE;
+  const collateralLocked = hydrated ? storeCollateralLocked : 0;
 
   return (
     <header style={{
