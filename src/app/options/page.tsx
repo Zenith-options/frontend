@@ -21,6 +21,7 @@ import { useHydrated } from "../../lib/useHydrated";
 import { StrategyPicker } from "../../components/StrategyPicker";
 import { MultiLegPayoffDiagram } from "../../components/MultiLegPayoffDiagram";
 import { VolSurfaceHeatmap } from "../../components/VolSurfaceHeatmap";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { type StrategyTemplate } from "../../lib/strategies";
 import { netPremium, type PricedLeg } from "../../lib/payoff";
 
@@ -41,6 +42,7 @@ function OptionsPageContent() {
   const [expiry, setExpiry] = useState(EXPIRIES[2]);
   const [spot, setSpot] = useState(MARKETS.find(m=>m.sym===sym)!.price);
   const [trade, setTrade] = useState<TradeState|null>(null);
+  const [showTradeConfirm, setShowTradeConfirm] = useState(false);
   const positions = usePositionsStore(s=>s.positions);
   const addPosition = usePositionsStore(s=>s.addPosition);
   const debit = useAccountStore(s=>s.debit);
@@ -54,6 +56,7 @@ function OptionsPageContent() {
   const [contracts, setContracts] = useState("1");
   const [viewTab, setViewTab] = useState<"chain"|"positions"|"strategies"|"surface">("chain");
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyTemplate|null>(null);
+  const [showStrategyConfirm, setShowStrategyConfirm] = useState(false);
   const prevSpotRef = useRef(spot);
 
   const market = MARKETS.find(m=>m.sym===sym)??MARKETS[0];
@@ -142,6 +145,7 @@ function OptionsPageContent() {
       });
     }
     setTrade(null);
+    setShowTradeConfirm(false);
     setViewTab("positions");
   };
 
@@ -167,6 +171,7 @@ function OptionsPageContent() {
       });
     }
     setSelectedStrategy(null);
+    setShowStrategyConfirm(false);
     setViewTab("positions");
   };
 
@@ -431,7 +436,7 @@ function OptionsPageContent() {
                   <div style={{marginTop:16}}>
                     <MultiLegPayoffDiagram legs={pricedLegs} spot={spot} width={420} height={220}/>
                   </div>
-                  <button onClick={execStrategy} disabled={strategyInsufficientFunds} style={{marginTop:12,padding:"10px 20px",
+                  <button onClick={()=>setShowStrategyConfirm(true)} disabled={strategyInsufficientFunds} style={{marginTop:12,padding:"10px 20px",
                     background:"var(--brand)",color:"var(--bg)",border:"none",fontSize:13,fontWeight:700,
                     cursor:strategyInsufficientFunds?"default":"pointer",opacity:strategyInsufficientFunds?0.5:1}}>
                     Execute {selectedStrategy.name} ({pricedLegs.length} legs)
@@ -584,7 +589,7 @@ function OptionsPageContent() {
                   </div>
                 )}
               </div>
-              <button onClick={execTrade} disabled={insufficientFunds} style={{width:"100%",height:44,borderRadius:0,border:"none",
+              <button onClick={()=>setShowTradeConfirm(true)} disabled={insufficientFunds} style={{width:"100%",height:44,borderRadius:0,border:"none",
                 cursor:insufficientFunds?"default":"pointer",fontSize:14,fontWeight:700,
                 opacity:insufficientFunds?0.5:1,
                 background:trade.side==="call"?"var(--call)":"var(--put)",color:"var(--bg)"}}>
@@ -624,6 +629,59 @@ function OptionsPageContent() {
           <span style={{fontSize:10,color:"var(--text-lo)"}}>Live · Stellar Testnet</span>
         </div>
       </div>
+
+      {showTradeConfirm&&trade&&tradeGreeks&&(
+        <ConfirmDialog
+          title={`${trade.mode==="write"?"Write":"Buy"} ${sym} ${trade.side.toUpperCase()}`}
+          confirmLabel={`Confirm ${trade.mode==="write"?"Write":"Buy"}`}
+          onConfirm={execTrade}
+          onCancel={()=>setShowTradeConfirm(false)}
+          disabled={insufficientFunds}
+          disabledReason={insufficientFunds?`Insufficient balance ${trade.mode==="write"?"to post collateral":"to cover premium"}.`:undefined}
+        >
+          {[
+            ["Strike",fmtK(trade.row.strike)],
+            ["Expiry",expiry.label],
+            ["Contracts",String(qty)],
+            [trade.mode==="write"?"Premium received":"Total premium",`$${fmtN(tradeGreeks.premium*qty,2)}`],
+            ...(trade.mode==="write"?[["Collateral required",`$${fmtN(collateral,2)}`]]:[]),
+          ].map(([k,v])=>(
+            <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12}}>
+              <span style={{color:"var(--text-lo)"}}>{k}</span>
+              <span className="num" style={{color:"var(--text-hi)"}}>{v}</span>
+            </div>
+          ))}
+        </ConfirmDialog>
+      )}
+
+      {showStrategyConfirm&&selectedStrategy&&(
+        <ConfirmDialog
+          title={`Execute ${selectedStrategy.name}`}
+          confirmLabel="Confirm Execute"
+          onConfirm={execStrategy}
+          onCancel={()=>setShowStrategyConfirm(false)}
+          disabled={strategyInsufficientFunds}
+          disabledReason={strategyInsufficientFunds?`Insufficient balance — needs $${fmtN(strategyRequiredFunds,2)}, have $${fmtN(balance,2)}.`:undefined}
+        >
+          {pricedLegs.map((leg,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12}}>
+              <span style={{color:leg.action==="buy"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>{leg.action} {leg.side}</span>
+              <span className="num" style={{color:"var(--text-mid)"}}>K={fmtK(leg.strike)}</span>
+              <span className="num" style={{color:"var(--text-hi)"}}>${fmtN(leg.greeks.premium*leg.contracts,2)}</span>
+            </div>
+          ))}
+          <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0 0",marginTop:6,borderTop:"1px solid var(--border-default)",fontSize:12}}>
+            <span style={{color:"var(--text-lo)"}}>{strategyNetPremium>=0?"Net Debit":"Net Credit"}</span>
+            <span className="num" style={{color:"var(--text-hi)"}}>${fmtN(Math.abs(strategyNetPremium),2)}</span>
+          </div>
+          {strategyCollateral>0&&(
+            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12}}>
+              <span style={{color:"var(--text-lo)"}}>Collateral Required</span>
+              <span className="num" style={{color:"var(--text-hi)"}}>${fmtN(strategyCollateral,2)}</span>
+            </div>
+          )}
+        </ConfirmDialog>
+      )}
     </div>
   );
 }
