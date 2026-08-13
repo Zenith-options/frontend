@@ -14,6 +14,8 @@ import { collateralRequired } from "../../lib/collateral";
 import { useHistoryStore } from "../../lib/store/history";
 import { AlertsPanel } from "../../components/AlertsPanel";
 import { StarButton } from "../../components/StarButton";
+import { SpotPriceChart } from "../../components/SpotPriceChart";
+import { usePriceHistory } from "../../lib/usePriceHistory";
 import { useWatchlistStore } from "../../lib/store/watchlist";
 import { useHydrated } from "../../lib/useHydrated";
 import { StrategyPicker } from "../../components/StrategyPicker";
@@ -47,6 +49,7 @@ function OptionsPageContent() {
   const balance = useAccountStore(s=>s.balance);
   const favorites = useWatchlistStore(s=>s.favorites);
   const hydrated = useHydrated();
+  const priceHistory = usePriceHistory(sym, spot);
   const [contracts, setContracts] = useState("1");
   const [viewTab, setViewTab] = useState<"chain"|"positions"|"strategies">("chain");
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyTemplate|null>(null);
@@ -215,6 +218,8 @@ function OptionsPageContent() {
         <aside style={{width:236,flexShrink:0,borderRight:"1px solid var(--border-default)",
           overflowY:"auto",padding:"14px 12px",display:"flex",flexDirection:"column",gap:18,
           background:"var(--bg-raised)"}}>
+
+          <SpotPriceChart history={priceHistory} width={212} height={70}/>
 
           <VolSmile spot={spot} baseVol={market.vol} width={212} height={110}/>
 
