@@ -51,15 +51,20 @@ export function VolSurfaceHeatmap({ baseVol }: Props) {
               <td style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-lo)", paddingRight: 6, textAlign: "right" }}>
                 {EXPIRY_DAYS[i]}D
               </td>
-              {row.map((cell, j) => (
-                <td key={j} title={`${Math.round(cell.moneyness * 100)}% strike, ${cell.days}D: ${(cell.iv * 100).toFixed(1)}% IV`} style={{
-                  width: 32, height: 24, border: "1px solid var(--border-subtle)",
-                  background: cellColor(cell, minIv, maxIv),
-                  textAlign: "center", fontSize: 8, fontFamily: "var(--font-mono)", color: "var(--text-mid)",
-                }}>
-                  {Math.round(cell.iv * 100)}
-                </td>
-              ))}
+              {row.map((cell, j) => {
+                const isAtm = cell.moneyness === 1;
+                return (
+                  <td key={j} title={`${Math.round(cell.moneyness * 100)}% strike, ${cell.days}D: ${(cell.iv * 100).toFixed(1)}% IV`} style={{
+                    width: 32, height: 24,
+                    border: isAtm ? "1px solid rgba(201,151,76,0.4)" : "1px solid var(--border-subtle)",
+                    background: cellColor(cell, minIv, maxIv),
+                    textAlign: "center", fontSize: 8, fontFamily: "var(--font-mono)",
+                    color: isAtm ? "var(--atm)" : "var(--text-mid)", fontWeight: isAtm ? 700 : 400,
+                  }}>
+                    {Math.round(cell.iv * 100)}
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>
