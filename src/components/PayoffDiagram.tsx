@@ -111,8 +111,8 @@ export function PayoffDiagram({
     };
   }, [spot, strike, premium, isCall, contracts]);
 
-  const color = isCall ? "#22C55E" : "#F43F5E";
-  const colorDim = isCall ? "rgba(34,197,94,0.15)" : "rgba(244,63,94,0.15)";
+  const color = isCall ? "#5C9A6B" : "#B65640";
+  const colorDim = isCall ? "rgba(92,154,107,0.15)" : "rgba(182,86,64,0.15)";
 
   return (
     <div style={{ width, height }}>
@@ -127,12 +127,12 @@ export function PayoffDiagram({
             <rect x={PAD.l} y={PAD.t} width={W} height={H} />
           </clipPath>
           <linearGradient id="profit-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgba(34,197,94,0.25)" />
-            <stop offset="100%" stopColor="rgba(34,197,94,0.04)" />
+            <stop offset="0%" stopColor="rgba(92,154,107,0.25)" />
+            <stop offset="100%" stopColor="rgba(92,154,107,0.04)" />
           </linearGradient>
           <linearGradient id="loss-grad" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor="rgba(244,63,94,0.25)" />
-            <stop offset="100%" stopColor="rgba(244,63,94,0.04)" />
+            <stop offset="0%" stopColor="rgba(182,86,64,0.25)" />
+            <stop offset="100%" stopColor="rgba(182,86,64,0.04)" />
           </linearGradient>
         </defs>
 
@@ -172,7 +172,7 @@ export function PayoffDiagram({
           {/* Strike vertical */}
           <line
             x1={data.strikeX} y1={0} x2={data.strikeX} y2={H}
-            stroke="rgba(234,179,8,0.4)" strokeWidth={1}
+            stroke="rgba(201,151,76,0.4)" strokeWidth={1}
             strokeDasharray="4 3"
           />
 
@@ -205,8 +205,8 @@ export function PayoffDiagram({
               fontSize={9}
               fontFamily="'JetBrains Mono', monospace"
               fill={l.value === 0 ? "rgba(255,255,255,0.4)"
-                  : l.value > 0 ? "rgba(34,197,94,0.7)"
-                  : "rgba(244,63,94,0.7)"}
+                  : l.value > 0 ? "rgba(92,154,107,0.7)"
+                  : "rgba(182,86,64,0.7)"}
             >
               {l.label}
             </text>
@@ -232,7 +232,7 @@ export function PayoffDiagram({
             textAnchor="middle"
             fontSize={9}
             fontFamily="'JetBrains Mono', monospace"
-            fill="rgba(234,179,8,0.8)"
+            fill="rgba(201,151,76,0.8)"
           >
             K
           </text>
@@ -274,7 +274,7 @@ export function PayoffDiagram({
       {!compact && (
         <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 4 }}>
           {[
-            { label: "Max loss", value: `−$${(premium * contracts).toFixed(2)}`, color: "#F43F5E" },
+            { label: "Max loss", value: `−$${(premium * contracts).toFixed(2)}`, color: "#B65640" },
             { label: "Breakeven", value: data.breakeven >= 1 ? `$${data.breakeven.toFixed(2)}` : `$${data.breakeven.toFixed(4)}`, color: color },
           ].map(item => (
             <div key={item.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>

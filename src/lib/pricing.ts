@@ -81,6 +81,14 @@ export function smileVol(base: number, moneyness: number): number {
   );
 }
 
+// Deterministic pseudo-random in [0, 1), seeded by a number. Used for display-only
+// figures (mock vol/OI) that must render identically on the server and client —
+// Math.random() during render causes React hydration mismatches.
+export function seededRandom(seed: number): number {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
+
 export const fmtN = (n: number, d = 4) =>
   n === 0 ? "—" : Math.abs(n) < 0.0001 ? n.toExponential(2) : n.toFixed(d);
 

@@ -6,7 +6,7 @@ import { PayoffDiagram } from "../../components/PayoffDiagram";
 import { VolSmile } from "../../components/VolSmile";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
-import { MARKETS, EXPIRIES, bs, smileVol, fmtN, fmtSpot, fmtK, type Greeks } from "../../lib/pricing";
+import { MARKETS, EXPIRIES, bs, smileVol, seededRandom, fmtN, fmtSpot, fmtK, type Greeks } from "../../lib/pricing";
 import { usePositionsStore } from "../../lib/store/positions";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
@@ -141,8 +141,8 @@ export default function OptionsPage() {
                     <span style={{fontSize:10,color:"var(--text-lo)"}}>{e.label}</span>
                     <span className="num" style={{fontSize:10,color:"var(--text-mid)"}}>{pct}%</span>
                   </div>
-                  <div style={{height:3,background:"var(--bg-overlay)",borderRadius:2}}>
-                    <div style={{width:`${pct}%`,height:"100%",borderRadius:2,background:`rgba(139,92,246,${0.3+pct/100*0.5})`}}/>
+                  <div style={{height:3,background:"var(--bg-overlay)",borderRadius:0}}>
+                    <div style={{width:`${pct}%`,height:"100%",borderRadius:0,background:`rgba(201,151,76,${0.3+pct/100*0.5})`}}/>
                   </div>
                 </div>
               );
@@ -197,8 +197,8 @@ export default function OptionsPage() {
               {chain.map((row,i)=>{
                 const isAtm=i===atmIdx;
                 const sp=Math.max(0.00001,row.call.premium*0.003);
-                const vol=Math.round(Math.random()*200+20);
-                const oi=Math.round(Math.random()*5000+100);
+                const vol=Math.round(seededRandom(row.strike*1000)*200+20);
+                const oi=Math.round(seededRandom(row.strike*1000+7)*5000+100);
                 return(
                   <div key={row.strike}
                     className={`chain-row${row.itmCall?" itm-call":""}${row.itmPut?" itm-put":""}`}
@@ -249,7 +249,7 @@ export default function OptionsPage() {
                       <tr key={pos.id} style={{borderBottom:"1px solid var(--border-subtle)"}}>
                         <td style={{padding:"8px",fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{pos.sym}</td>
                         <td style={{padding:"8px 4px"}}>
-                          <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",borderRadius:2,
+                          <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",borderRadius:0,
                             background:pos.side==="call"?"var(--call-dim)":"var(--put-dim)",
                             color:pos.side==="call"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>
                             {pos.side}
@@ -265,7 +265,7 @@ export default function OptionsPage() {
                         <td style={{padding:"4px 8px"}}>
                           <button onClick={()=>closePosition(pos.id)} style={{
                             fontSize:10,color:"var(--text-lo)",background:"none",border:"1px solid var(--border-default)",
-                            borderRadius:3,padding:"2px 8px",cursor:"pointer"}}>Close</button>
+                            borderRadius:0,padding:"2px 8px",cursor:"pointer"}}>Close</button>
                         </td>
                       </tr>
                     ))}
@@ -338,7 +338,7 @@ export default function OptionsPage() {
                   {g:"Θ Theta",v:tradeGreeks.theta,dp:4,c:"var(--put)"},
                   {g:"V Vega", v:tradeGreeks.vega, dp:3,c:"var(--atm)"},
                 ].map(item=>(
-                  <div key={item.g} style={{padding:"9px 10px",borderRadius:4,
+                  <div key={item.g} style={{padding:"9px 10px",borderRadius:0,
                     border:"1px solid var(--border-default)",background:"var(--bg-elevated)"}}>
                     <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.08em",
                       color:"var(--text-lo)",marginBottom:4}}>{item.g}</div>
@@ -352,7 +352,7 @@ export default function OptionsPage() {
                 {[{label:"Premium",v:`$${fmtN(tradeGreeks.premium)}`,c:"var(--text-hi)"},
                   {label:"Impl. Vol",v:`${(tradeGreeks.iv*100).toFixed(1)}%`,c:"var(--brand)"},
                 ].map(item=>(
-                  <div key={item.label} style={{flex:1,padding:"9px 10px",borderRadius:4,
+                  <div key={item.label} style={{flex:1,padding:"9px 10px",borderRadius:0,
                     border:"1px solid var(--border-default)",background:"var(--bg-elevated)"}}>
                     <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.08em",
                       color:"var(--text-lo)",marginBottom:4}}>{item.label}</div>
@@ -370,7 +370,7 @@ export default function OptionsPage() {
                 <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>Contracts</div>
                 <div style={{display:"flex",alignItems:"center",
                   background:"var(--bg-overlay)",border:"1px solid var(--border-default)",
-                  borderRadius:4,overflow:"hidden"}}>
+                  borderRadius:0,overflow:"hidden"}}>
                   <button onClick={()=>setContracts(c=>String(Math.max(0.01,(parseFloat(c)||1)-1)))}
                     style={{width:36,height:40,border:"none",background:"none",color:"var(--text-mid)",fontSize:18,cursor:"pointer"}}>−</button>
                   <input type="number" min="0.01" step="0.01" value={contracts}
@@ -381,7 +381,7 @@ export default function OptionsPage() {
                     style={{width:36,height:40,border:"none",background:"none",color:"var(--text-mid)",fontSize:18,cursor:"pointer"}}>+</button>
                 </div>
               </div>
-              <div style={{background:"var(--bg-elevated)",borderRadius:4,padding:"9px 12px",marginBottom:10}}>
+              <div style={{background:"var(--bg-elevated)",borderRadius:0,padding:"9px 12px",marginBottom:10}}>
                 {[["Qty",`${contracts} × ${sym}`],
                   ["Total premium",`$${fmtN(tradeGreeks.premium*(parseFloat(contracts)||1))}`],
                   ["Max loss",`$${fmtN(tradeGreeks.premium*(parseFloat(contracts)||1))}`],
@@ -392,7 +392,7 @@ export default function OptionsPage() {
                   </div>
                 ))}
               </div>
-              <button onClick={execTrade} style={{width:"100%",height:44,borderRadius:4,border:"none",cursor:"pointer",
+              <button onClick={execTrade} style={{width:"100%",height:44,borderRadius:0,border:"none",cursor:"pointer",
                 fontSize:14,fontWeight:700,
                 background:trade.side==="call"?"var(--call)":"var(--put)",color:"#000",
                 boxShadow:trade.side==="call"?"0 4px 16px rgba(34,197,94,0.25)":"0 4px 16px rgba(244,63,94,0.25)"}}>
