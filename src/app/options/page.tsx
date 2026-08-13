@@ -155,7 +155,7 @@ function OptionsPageContent() {
 
           <VolSmile spot={spot} baseVol={market.vol} width={212} height={110}/>
 
-          <AlertsPanel sym={sym}/>
+          <AlertsPanel sym={sym} spot={spot}/>
 
           <div>
             <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--text-lo)",marginBottom:8}}>Market</div>
