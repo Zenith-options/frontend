@@ -156,6 +156,44 @@ export default function PortfolioPage() {
     ? balance + rollPreview.closeCashEffect < (rollTarget.positionType === "short" ? rollPreview.newCollateral : rollPreview.newPremium)
     : false;
 
+  const executeRoll = () => {
+    if (!rollTarget || !rollPreview || rollInsufficientFunds) return;
+
+    // Close the old leg exactly like handleClose.
+    if (rollTarget.positionType === "short") {
+      releaseCollateral(rollTarget.collateral);
+      debit(rollTarget.currentPremium);
+    } else {
+      credit(rollTarget.currentPremium);
+    }
+    addHistoryRecord({
+      sym: rollTarget.sym, side: rollTarget.side, positionType: rollTarget.positionType, action: "close",
+      strike: rollTarget.strike, expiryLabel: rollTarget.expiryLabel, contracts: rollTarget.contracts,
+      premium: rollTarget.currentPremium, realizedPnl: rollTarget.pnl,
+    });
+    closePosition(rollTarget.id);
+
+    // Open the new leg at the chosen strike/expiry.
+    if (rollTarget.positionType === "short") {
+      reserveCollateral(rollPreview.newCollateral);
+      credit(rollPreview.newPremium);
+    } else {
+      debit(rollPreview.newPremium);
+    }
+    addPosition({
+      sym: rollTarget.sym, side: rollTarget.side, positionType: rollTarget.positionType, strike: rollPreview.newStrike,
+      expiryLabel: rollExpiry.label, expiryDays: rollExpiry.days,
+      contracts: rollTarget.contracts, entrySpot: rollPreview.spot, premium: rollPreview.newPremium, collateral: rollPreview.newCollateral,
+      delta: rollPreview.greeks.delta, gamma: rollPreview.greeks.gamma, theta: rollPreview.greeks.theta, vega: rollPreview.greeks.vega,
+    });
+    addHistoryRecord({
+      sym: rollTarget.sym, side: rollTarget.side, positionType: rollTarget.positionType, action: "open",
+      strike: rollPreview.newStrike, expiryLabel: rollExpiry.label, contracts: rollTarget.contracts, premium: rollPreview.newPremium,
+    });
+
+    setRollTargetId(null);
+  };
+
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100vh",background:"var(--bg)",overflow:"hidden",fontFamily:"var(--font-sans)"}}>
       <AppHeader>
@@ -360,9 +398,18 @@ export default function PortfolioPage() {
                                   </div>
                                 </>
                               )}
-                              <button onClick={()=>setRollTargetId(null)} style={{
-                                marginLeft:"auto",fontSize:11,color:"var(--text-lo)",background:"none",
-                                border:"1px solid var(--border-default)",padding:"5px 12px",cursor:"pointer"}}>Cancel</button>
+                              <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
+                                {rollInsufficientFunds && (
+                                  <span style={{fontSize:11,color:"var(--put)"}}>Insufficient balance for the new leg</span>
+                                )}
+                                <button onClick={()=>setRollTargetId(null)} style={{
+                                  fontSize:11,color:"var(--text-lo)",background:"none",
+                                  border:"1px solid var(--border-default)",padding:"5px 12px",cursor:"pointer"}}>Cancel</button>
+                                <button onClick={executeRoll} disabled={!!rollInsufficientFunds} style={{
+                                  fontSize:11,color:"var(--bg)",background:"var(--brand)",border:"none",
+                                  padding:"5px 12px",cursor:rollInsufficientFunds?"default":"pointer",
+                                  opacity:rollInsufficientFunds?0.5:1}}>Confirm Roll</button>
+                              </div>
                             </div>
                           </td>
                         </tr>
