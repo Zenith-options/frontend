@@ -13,6 +13,10 @@ import { useAccountStore } from "../../lib/store/account";
 import { collateralRequired } from "../../lib/collateral";
 import { useHistoryStore } from "../../lib/store/history";
 import { AlertsPanel } from "../../components/AlertsPanel";
+import { StrategyPicker } from "../../components/StrategyPicker";
+import { MultiLegPayoffDiagram } from "../../components/MultiLegPayoffDiagram";
+import { type StrategyTemplate } from "../../lib/strategies";
+import { netPremium, type PricedLeg } from "../../lib/payoff";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
@@ -40,6 +44,7 @@ function OptionsPageContent() {
   const balance = useAccountStore(s=>s.balance);
   const [contracts, setContracts] = useState("1");
   const [viewTab, setViewTab] = useState<"chain"|"positions"|"strategies">("chain");
+  const [selectedStrategy, setSelectedStrategy] = useState<StrategyTemplate|null>(null);
   const prevSpotRef = useRef(spot);
 
   const market = MARKETS.find(m=>m.sym===sym)??MARKETS[0];
@@ -69,6 +74,16 @@ function OptionsPageContent() {
   const portGreeks=useMemo(()=>aggregateGreeks(positions),[positions]);
 
   const qty=Math.max(0.01,parseFloat(contracts)||1);
+
+  const pricedLegs=useMemo(():PricedLeg[]=>{
+    if(!selectedStrategy)return[];
+    return selectedStrategy.legs.map(leg=>{
+      const strike=Math.round(spot*leg.strikeOffset*10000)/10000;
+      const vol=smileVol(market.vol,leg.strikeOffset);
+      const greeks=bs(spot,strike,vol,t,leg.side==="call");
+      return{side:leg.side,action:leg.action,strike,contracts:qty,greeks};
+    });
+  },[selectedStrategy,spot,market.vol,t,qty]);
   const collateral=trade&&trade.mode==="write"?collateralRequired(trade.side,qty,trade.row.strike,spot):0;
   const requiredFunds=trade?(trade.mode==="write"?collateral:(tradeGreeks?.premium??0)*qty):0;
   const insufficientFunds=balance<requiredFunds;
@@ -327,8 +342,27 @@ function OptionsPageContent() {
           )}
 
           {viewTab==="strategies"&&(
-            <div style={{flex:1,overflowY:"auto",padding:16}}>
-              <div style={{fontSize:11,color:"var(--text-lo)"}}>Strategy builder coming together — next commit.</div>
+            <div style={{flex:1,overflowY:"auto",padding:16,display:"grid",gridTemplateColumns:"280px 1fr",gap:16}}>
+              <StrategyPicker selectedId={selectedStrategy?.id??null} onSelect={setSelectedStrategy}/>
+
+              {selectedStrategy&&(
+                <div>
+                  <div style={{fontSize:14,fontWeight:700,color:"var(--text-hi)",marginBottom:12}}>{selectedStrategy.name}</div>
+                  {pricedLegs.map((leg,i)=>(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",
+                      borderBottom:"1px solid var(--border-subtle)"}}>
+                      <span style={{fontSize:11,color:leg.action==="buy"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>
+                        {leg.action} {leg.side}
+                      </span>
+                      <span className="num" style={{fontSize:11,color:"var(--text-mid)"}}>K={fmtK(leg.strike)}</span>
+                      <span className="num" style={{fontSize:11,color:"var(--text-hi)"}}>${fmtN(leg.greeks.premium,4)}</span>
+                    </div>
+                  ))}
+                  <div style={{marginTop:16}}>
+                    <MultiLegPayoffDiagram legs={pricedLegs} spot={spot} width={420} height={220}/>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
