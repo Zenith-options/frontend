@@ -80,6 +80,11 @@ export default function PortfolioPage() {
     } else {
       credit(p.currentPremium);
     }
+    addHistoryRecord({
+      sym: p.sym, side: p.side, positionType: p.positionType, action: "close",
+      strike: p.strike, expiryLabel: p.expiryLabel, contracts: p.contracts,
+      premium: p.currentPremium, realizedPnl: p.pnl,
+    });
     closePosition(p.id);
   };
 
