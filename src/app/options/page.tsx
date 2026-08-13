@@ -89,6 +89,8 @@ function OptionsPageContent() {
   const strategyCollateral=useMemo(()=>pricedLegs.reduce((sum,leg)=>
     leg.action==="sell"?sum+collateralRequired(leg.side,leg.contracts,leg.strike,spot):sum,0
   ),[pricedLegs,spot]);
+  const strategyRequiredFunds=strategyCollateral+Math.max(0,strategyNetPremium);
+  const strategyInsufficientFunds=pricedLegs.length>0&&balance<strategyRequiredFunds;
   const collateral=trade&&trade.mode==="write"?collateralRequired(trade.side,qty,trade.row.strike,spot):0;
   const requiredFunds=trade?(trade.mode==="write"?collateral:(tradeGreeks?.premium??0)*qty):0;
   const insufficientFunds=balance<requiredFunds;
@@ -127,7 +129,7 @@ function OptionsPageContent() {
   };
 
   const execStrategy=()=>{
-    if(!selectedStrategy||pricedLegs.length===0)return;
+    if(!selectedStrategy||pricedLegs.length===0||strategyInsufficientFunds)return;
     if(strategyCollateral>0&&!reserveCollateral(strategyCollateral))return;
     const strategyId=`strat-${Date.now()}`;
     for(const leg of pricedLegs){
@@ -407,10 +409,16 @@ function OptionsPageContent() {
                   <div style={{marginTop:16}}>
                     <MultiLegPayoffDiagram legs={pricedLegs} spot={spot} width={420} height={220}/>
                   </div>
-                  <button onClick={execStrategy} style={{marginTop:12,padding:"10px 20px",background:"var(--brand)",
-                    color:"var(--bg)",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  <button onClick={execStrategy} disabled={strategyInsufficientFunds} style={{marginTop:12,padding:"10px 20px",
+                    background:"var(--brand)",color:"var(--bg)",border:"none",fontSize:13,fontWeight:700,
+                    cursor:strategyInsufficientFunds?"default":"pointer",opacity:strategyInsufficientFunds?0.5:1}}>
                     Execute {selectedStrategy.name} ({pricedLegs.length} legs)
                   </button>
+                  {strategyInsufficientFunds&&(
+                    <div style={{marginTop:6,fontSize:11,color:"var(--put)"}}>
+                      Insufficient balance — needs ${fmtN(strategyRequiredFunds,2)}, have ${fmtN(balance,2)}.
+                    </div>
+                  )}
                 </div>
               )}
             </div>
