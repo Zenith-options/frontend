@@ -21,6 +21,7 @@ import { useHydrated } from "../../lib/useHydrated";
 import { StrategyPicker } from "../../components/StrategyPicker";
 import { MultiLegPayoffDiagram } from "../../components/MultiLegPayoffDiagram";
 import { VolSurfaceHeatmap } from "../../components/VolSurfaceHeatmap";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { type StrategyTemplate } from "../../lib/strategies";
 import { netPremium, type PricedLeg } from "../../lib/payoff";
 
@@ -41,6 +42,7 @@ function OptionsPageContent() {
   const [expiry, setExpiry] = useState(EXPIRIES[2]);
   const [spot, setSpot] = useState(MARKETS.find(m=>m.sym===sym)!.price);
   const [trade, setTrade] = useState<TradeState|null>(null);
+  const [showTradeConfirm, setShowTradeConfirm] = useState(false);
   const positions = usePositionsStore(s=>s.positions);
   const addPosition = usePositionsStore(s=>s.addPosition);
   const debit = useAccountStore(s=>s.debit);
@@ -142,6 +144,7 @@ function OptionsPageContent() {
       });
     }
     setTrade(null);
+    setShowTradeConfirm(false);
     setViewTab("positions");
   };
 
@@ -584,7 +587,7 @@ function OptionsPageContent() {
                   </div>
                 )}
               </div>
-              <button onClick={execTrade} disabled={insufficientFunds} style={{width:"100%",height:44,borderRadius:0,border:"none",
+              <button onClick={()=>setShowTradeConfirm(true)} disabled={insufficientFunds} style={{width:"100%",height:44,borderRadius:0,border:"none",
                 cursor:insufficientFunds?"default":"pointer",fontSize:14,fontWeight:700,
                 opacity:insufficientFunds?0.5:1,
                 background:trade.side==="call"?"var(--call)":"var(--put)",color:"var(--bg)"}}>
@@ -624,6 +627,30 @@ function OptionsPageContent() {
           <span style={{fontSize:10,color:"var(--text-lo)"}}>Live · Stellar Testnet</span>
         </div>
       </div>
+
+      {showTradeConfirm&&trade&&tradeGreeks&&(
+        <ConfirmDialog
+          title={`${trade.mode==="write"?"Write":"Buy"} ${sym} ${trade.side.toUpperCase()}`}
+          confirmLabel={`Confirm ${trade.mode==="write"?"Write":"Buy"}`}
+          onConfirm={execTrade}
+          onCancel={()=>setShowTradeConfirm(false)}
+          disabled={insufficientFunds}
+          disabledReason={insufficientFunds?`Insufficient balance ${trade.mode==="write"?"to post collateral":"to cover premium"}.`:undefined}
+        >
+          {[
+            ["Strike",fmtK(trade.row.strike)],
+            ["Expiry",expiry.label],
+            ["Contracts",String(qty)],
+            [trade.mode==="write"?"Premium received":"Total premium",`$${fmtN(tradeGreeks.premium*qty,2)}`],
+            ...(trade.mode==="write"?[["Collateral required",`$${fmtN(collateral,2)}`]]:[]),
+          ].map(([k,v])=>(
+            <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12}}>
+              <span style={{color:"var(--text-lo)"}}>{k}</span>
+              <span className="num" style={{color:"var(--text-hi)"}}>{v}</span>
+            </div>
+          ))}
+        </ConfirmDialog>
+      )}
     </div>
   );
 }
