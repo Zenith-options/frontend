@@ -39,7 +39,10 @@ export function MultiLegPayoffDiagram({ legs, spot, width = 340, height = 180 }:
       .map((pt, i) => `${i === 0 ? "M" : "L"}${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(" ")
       + ` L${toX(hi).toFixed(1)},${zeroY.toFixed(1)} L${toX(lo).toFixed(1)},${zeroY.toFixed(1)} Z`;
 
-    return { lo, hi, pathData, profitPath, lossPath, zeroY, spotX: toX(spot), maxPnl, minPnl };
+    return {
+      lo, hi, pathData, profitPath, lossPath, zeroY, spotX: toX(spot), maxPnl, minPnl,
+      yLabels: [minPnl, 0, maxPnl].map(v => ({ v, y: toY(v) })),
+    };
   }, [legs, spot, W, H]);
 
   return (
@@ -54,6 +57,13 @@ export function MultiLegPayoffDiagram({ legs, spot, width = 340, height = 180 }:
           <path d={data.profitPath} fill="rgba(92,154,107,0.15)" clipPath="url(#ml-chart-clip)" />
           <line x1={data.spotX} y1={0} x2={data.spotX} y2={H} stroke="rgba(255,255,255,0.2)" strokeWidth={1} strokeDasharray="3 3" />
           <path d={data.pathData} fill="none" stroke="var(--brand)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" clipPath="url(#ml-chart-clip)" />
+          {data.yLabels.map(l => (
+            <text key={l.v} x={-6} y={l.y} textAnchor="end" dominantBaseline="middle" fontSize={9} fontFamily="var(--font-mono)"
+              fill={l.v === 0 ? "rgba(255,255,255,0.4)" : l.v > 0 ? "rgba(92,154,107,0.7)" : "rgba(182,86,64,0.7)"}>
+              {l.v === 0 ? "0" : `${l.v > 0 ? "+" : "−"}$${Math.abs(l.v).toFixed(2)}`}
+            </text>
+          ))}
+          <text x={data.spotX} y={-6} textAnchor="middle" fontSize={9} fontFamily="var(--font-mono)" fill="rgba(255,255,255,0.5)">S</text>
           <rect x={0} y={0} width={W} height={H} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
         </g>
       </svg>
