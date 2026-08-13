@@ -126,6 +126,31 @@ function OptionsPageContent() {
     setViewTab("positions");
   };
 
+  const execStrategy=()=>{
+    if(!selectedStrategy||pricedLegs.length===0)return;
+    if(strategyCollateral>0&&!reserveCollateral(strategyCollateral))return;
+    const strategyId=`strat-${Date.now()}`;
+    for(const leg of pricedLegs){
+      const legPremium=leg.greeks.premium*leg.contracts;
+      const positionType=leg.action==="buy"?"long":"short";
+      const legCollateral=leg.action==="sell"?collateralRequired(leg.side,leg.contracts,leg.strike,spot):0;
+      addPosition({
+        sym,side:leg.side,positionType,strike:leg.strike,
+        expiryLabel:expiry.label,expiryDays:expiry.days,
+        contracts:leg.contracts,entrySpot:spot,premium:legPremium,collateral:legCollateral,
+        delta:leg.greeks.delta,gamma:leg.greeks.gamma,theta:leg.greeks.theta,vega:leg.greeks.vega,
+        strategyId,
+      });
+      if(leg.action==="buy")debit(legPremium);else credit(legPremium);
+      addHistoryRecord({
+        sym,side:leg.side,positionType,action:"open",
+        strike:leg.strike,expiryLabel:expiry.label,contracts:leg.contracts,premium:legPremium,
+      });
+    }
+    setSelectedStrategy(null);
+    setViewTab("positions");
+  };
+
   const priceDir = spot >= prevSpotRef.current;
 
   return (
@@ -382,6 +407,10 @@ function OptionsPageContent() {
                   <div style={{marginTop:16}}>
                     <MultiLegPayoffDiagram legs={pricedLegs} spot={spot} width={420} height={220}/>
                   </div>
+                  <button onClick={execStrategy} style={{marginTop:12,padding:"10px 20px",background:"var(--brand)",
+                    color:"var(--bg)",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                    Execute {selectedStrategy.name} ({pricedLegs.length} legs)
+                  </button>
                 </div>
               )}
             </div>
