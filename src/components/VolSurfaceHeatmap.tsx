@@ -8,6 +8,7 @@ const EXPIRY_DAYS = [7, 14, 30, 60, 90, 180];
 
 interface Props {
   baseVol: number;
+  selectedExpiryDays?: number;
 }
 
 function cellColor(cell: SurfaceCell, minIv: number, maxIv: number): string {
@@ -19,7 +20,7 @@ function cellColor(cell: SurfaceCell, minIv: number, maxIv: number): string {
   return `rgba(181,150,101,${alpha.toFixed(3)})`;
 }
 
-export function VolSurfaceHeatmap({ baseVol }: Props) {
+export function VolSurfaceHeatmap({ baseVol, selectedExpiryDays }: Props) {
   const grid = useMemo(() => buildSurfaceGrid(baseVol, MONEYNESS, EXPIRY_DAYS), [baseVol]);
   const { minIv, maxIv } = useMemo(() => {
     const all = grid.flat().map(c => c.iv);
@@ -46,9 +47,13 @@ export function VolSurfaceHeatmap({ baseVol }: Props) {
           </tr>
         </thead>
         <tbody>
-          {grid.map((row, i) => (
-            <tr key={i}>
-              <td style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-lo)", paddingRight: 6, textAlign: "right" }}>
+          {grid.map((row, i) => {
+            const isSelectedExpiry = EXPIRY_DAYS[i] === selectedExpiryDays;
+            return (
+            <tr key={i} style={{ background: isSelectedExpiry ? "rgba(201,151,76,0.06)" : undefined }}>
+              <td style={{ fontSize: 9, fontFamily: "var(--font-mono)",
+                color: isSelectedExpiry ? "var(--atm)" : "var(--text-lo)",
+                fontWeight: isSelectedExpiry ? 700 : 400, paddingRight: 6, textAlign: "right" }}>
                 {EXPIRY_DAYS[i]}D
               </td>
               {row.map((cell, j) => {
@@ -66,7 +71,8 @@ export function VolSurfaceHeatmap({ baseVol }: Props) {
                 );
               })}
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>

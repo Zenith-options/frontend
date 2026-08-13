@@ -448,7 +448,7 @@ function OptionsPageContent() {
 
           {viewTab==="surface"&&(
             <div style={{flex:1,overflowY:"auto",padding:16}}>
-              <VolSurfaceHeatmap baseVol={market.vol}/>
+              <VolSurfaceHeatmap baseVol={market.vol} selectedExpiryDays={expiry.days}/>
             </div>
           )}
 
