@@ -6,6 +6,8 @@ import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
 import { useHistoryStore } from "../../lib/store/history";
 import { fmtN, fmtK } from "../../lib/pricing";
+import { toCsv, downloadCsv } from "../../lib/csv";
+import { ExportButton } from "../../components/ExportButton";
 
 function fmtDate(ts: number) {
   return new Date(ts).toLocaleString("en-US", {
@@ -37,10 +39,31 @@ export default function HistoryPage() {
 
       <div style={{flex:1,overflowY:"auto"}}>
         <div style={{maxWidth:1080,margin:"0 auto",padding:"32px 24px 64px"}}>
-          <h1 style={{fontFamily:"var(--font-serif)",fontSize:26,fontWeight:600,marginBottom:4}}>Trade History</h1>
-          <p style={{fontSize:13,color:"var(--text-mid)",marginBottom:28}}>
-            {records.length} record{records.length===1?"":"s"}
-          </p>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div>
+              <h1 style={{fontFamily:"var(--font-serif)",fontSize:26,fontWeight:600,marginBottom:4}}>Trade History</h1>
+              <p style={{fontSize:13,color:"var(--text-mid)",marginBottom:28}}>
+                {records.length} record{records.length===1?"":"s"}
+              </p>
+            </div>
+            {records.length>0 && (
+              <ExportButton onClick={()=>downloadCsv(
+                `zenith-history-${new Date().toISOString().slice(0,10)}.csv`,
+                toCsv(records,[
+                  {header:"Date",value:r=>new Date(r.timestamp).toISOString()},
+                  {header:"Asset",value:r=>r.sym},
+                  {header:"Type",value:r=>r.positionType},
+                  {header:"Side",value:r=>r.side},
+                  {header:"Action",value:r=>r.action},
+                  {header:"Strike",value:r=>r.strike},
+                  {header:"Expiry",value:r=>r.expiryLabel},
+                  {header:"Qty",value:r=>r.contracts},
+                  {header:"Premium",value:r=>r.premium},
+                  {header:"Realized P&L",value:r=>r.realizedPnl??""},
+                ])
+              )}/>
+            )}
+          </div>
 
           {stats.closedCount>0 && (
             <div style={{display:"flex",gap:0,marginBottom:24,border:"1px solid var(--border-default)",background:"var(--bg-raised)"}}>
