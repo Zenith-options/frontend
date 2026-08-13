@@ -8,6 +8,8 @@ import { usePositionsStore, aggregateGreeks, type Position } from "../../lib/sto
 import { useAccountStore } from "../../lib/store/account";
 import { useHistoryStore } from "../../lib/store/history";
 import { MARKETS, bs, smileVol, fmtN } from "../../lib/pricing";
+import { toCsv, downloadCsv } from "../../lib/csv";
+import { ExportButton } from "../../components/ExportButton";
 
 interface Marked extends Position {
   spot: number;
@@ -122,10 +124,32 @@ export default function PortfolioPage() {
 
       <div style={{flex:1,overflowY:"auto"}}>
         <div style={{maxWidth:1080,margin:"0 auto",padding:"32px 24px 64px"}}>
-          <h1 style={{fontFamily:"var(--font-serif)",fontSize:26,fontWeight:600,marginBottom:4}}>Portfolio</h1>
-          <p style={{fontSize:13,color:"var(--text-mid)",marginBottom:28}}>
-            {positions.length} open position{positions.length===1?"":"s"} · live premium repriced off current spot
-          </p>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div>
+              <h1 style={{fontFamily:"var(--font-serif)",fontSize:26,fontWeight:600,marginBottom:4}}>Portfolio</h1>
+              <p style={{fontSize:13,color:"var(--text-mid)",marginBottom:28}}>
+                {positions.length} open position{positions.length===1?"":"s"} · live premium repriced off current spot
+              </p>
+            </div>
+            {marked.length>0 && (
+              <ExportButton onClick={()=>downloadCsv(
+                `zenith-positions-${new Date().toISOString().slice(0,10)}.csv`,
+                toCsv(marked,[
+                  {header:"Asset",value:p=>p.sym},
+                  {header:"Type",value:p=>p.positionType},
+                  {header:"Side",value:p=>p.side},
+                  {header:"Strike",value:p=>p.strike},
+                  {header:"Expiry",value:p=>p.expiryLabel},
+                  {header:"Qty",value:p=>p.contracts},
+                  {header:"Strategy",value:p=>p.strategyId??""},
+                  {header:"Collateral",value:p=>p.collateral},
+                  {header:"Entry Premium",value:p=>p.premium},
+                  {header:"Current Value",value:p=>p.currentPremium},
+                  {header:"P&L",value:p=>p.pnl},
+                ])
+              )}/>
+            )}
+          </div>
 
           {/* Summary bar */}
           <div style={{display:"flex",gap:0,marginBottom:32,border:"1px solid var(--border-default)",background:"var(--bg-raised)"}}>
