@@ -141,6 +141,7 @@ export default function PortfolioPage() {
                   {header:"Strike",value:p=>p.strike},
                   {header:"Expiry",value:p=>p.expiryLabel},
                   {header:"Qty",value:p=>p.contracts},
+                  {header:"Strategy",value:p=>p.strategyId??""},
                   {header:"Collateral",value:p=>p.collateral},
                   {header:"Entry Premium",value:p=>p.premium},
                   {header:"Current Value",value:p=>p.currentPremium},
