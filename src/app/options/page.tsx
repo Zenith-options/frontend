@@ -84,6 +84,10 @@ function OptionsPageContent() {
         delta:tradeGreeks.delta,gamma:tradeGreeks.gamma,theta:tradeGreeks.theta,vega:tradeGreeks.vega,
       });
       credit(totalPremium);
+      addHistoryRecord({
+        sym,side:trade.side,positionType:"short",action:"open",
+        strike:trade.row.strike,expiryLabel:expiry.label,contracts:qty,premium:totalPremium,
+      });
     }else{
       addPosition({
         sym,side:trade.side,positionType:"long",strike:trade.row.strike,
