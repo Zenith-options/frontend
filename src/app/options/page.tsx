@@ -65,7 +65,7 @@ function OptionsPageContent() {
 
   const portGreeks=useMemo(()=>aggregateGreeks(positions),[positions]);
 
-  const qty=parseFloat(contracts)||1;
+  const qty=Math.max(0.01,parseFloat(contracts)||1);
   const collateral=trade&&trade.mode==="write"?collateralRequired(trade.side,qty,trade.row.strike,spot):0;
   const requiredFunds=trade?(trade.mode==="write"?collateral:(tradeGreeks?.premium??0)*qty):0;
   const insufficientFunds=balance<requiredFunds;
@@ -413,6 +413,7 @@ function OptionsPageContent() {
                     style={{width:36,height:40,border:"none",background:"none",color:"var(--text-mid)",fontSize:18,cursor:"pointer"}}>−</button>
                   <input type="number" min="0.01" step="0.01" value={contracts}
                     onChange={e=>setContracts(e.target.value)}
+                    onBlur={e=>setContracts(String(Math.max(0.01,parseFloat(e.target.value)||1)))}
                     style={{flex:1,height:40,border:"none",background:"none",textAlign:"center",
                       fontFamily:"var(--font-mono)",fontSize:16,color:"var(--text-hi)",outline:"none"}}/>
                   <button onClick={()=>setContracts(c=>String((parseFloat(c)||0)+1))}
