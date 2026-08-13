@@ -9,6 +9,7 @@ import { WalletConnect } from "../../components/WalletConnect";
 import { MARKETS, EXPIRIES, bs, smileVol, seededRandom, fmtN, fmtSpot, fmtK, type Greeks } from "../../lib/pricing";
 import { usePositionsStore, aggregateGreeks } from "../../lib/store/positions";
 import { useAccountStore } from "../../lib/store/account";
+import { collateralRequired } from "../../lib/collateral";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
@@ -31,6 +32,9 @@ function OptionsPageContent() {
   const addPosition = usePositionsStore(s=>s.addPosition);
   const closePosition = usePositionsStore(s=>s.closePosition);
   const debit = useAccountStore(s=>s.debit);
+  const credit = useAccountStore(s=>s.credit);
+  const reserveCollateral = useAccountStore(s=>s.reserveCollateral);
+  const balance = useAccountStore(s=>s.balance);
   const [contracts, setContracts] = useState("1");
   const [viewTab, setViewTab] = useState<"chain"|"positions">("chain");
   const prevSpotRef = useRef(spot);
@@ -61,17 +65,32 @@ function OptionsPageContent() {
 
   const portGreeks=useMemo(()=>aggregateGreeks(positions),[positions]);
 
+  const qty=parseFloat(contracts)||1;
+  const collateral=trade&&trade.mode==="write"?collateralRequired(trade.side,qty,trade.row.strike,spot):0;
+  const requiredFunds=trade?(trade.mode==="write"?collateral:(tradeGreeks?.premium??0)*qty):0;
+  const insufficientFunds=balance<requiredFunds;
+
   const execTrade=()=>{
-    if(!trade||!tradeGreeks)return;
-    const qty=parseFloat(contracts)||1;
+    if(!trade||!tradeGreeks||insufficientFunds)return;
     const totalPremium=tradeGreeks.premium*qty;
-    addPosition({
-      sym,side:trade.side,positionType:"long",strike:trade.row.strike,
-      expiryLabel:expiry.label,expiryDays:expiry.days,
-      contracts:qty,entrySpot:spot,premium:totalPremium,collateral:0,
-      delta:tradeGreeks.delta,gamma:tradeGreeks.gamma,theta:tradeGreeks.theta,vega:tradeGreeks.vega,
-    });
-    debit(totalPremium);
+    if(trade.mode==="write"){
+      if(!reserveCollateral(collateral))return;
+      addPosition({
+        sym,side:trade.side,positionType:"short",strike:trade.row.strike,
+        expiryLabel:expiry.label,expiryDays:expiry.days,
+        contracts:qty,entrySpot:spot,premium:totalPremium,collateral,
+        delta:tradeGreeks.delta,gamma:tradeGreeks.gamma,theta:tradeGreeks.theta,vega:tradeGreeks.vega,
+      });
+      credit(totalPremium);
+    }else{
+      addPosition({
+        sym,side:trade.side,positionType:"long",strike:trade.row.strike,
+        expiryLabel:expiry.label,expiryDays:expiry.days,
+        contracts:qty,entrySpot:spot,premium:totalPremium,collateral:0,
+        delta:tradeGreeks.delta,gamma:tradeGreeks.gamma,theta:tradeGreeks.theta,vega:tradeGreeks.vega,
+      });
+      debit(totalPremium);
+    }
     setTrade(null);
     setViewTab("positions");
   };
@@ -315,7 +334,7 @@ function OptionsPageContent() {
               <div>
                 <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",
                   color:trade.side==="call"?"var(--call)":"var(--put)",marginBottom:4}}>
-                  {trade.side==="call"?"▲ CALL":"▼ PUT"}
+                  {trade.mode==="write"?"WRITE ":"BUY "}{trade.side==="call"?"▲ CALL":"▼ PUT"}
                 </div>
                 <div style={{fontSize:15,fontWeight:700,color:"var(--text-hi)"}}>
                   {sym} {trade.side==="call"?"Call":"Put"}
@@ -334,7 +353,7 @@ function OptionsPageContent() {
                 color:"var(--text-lo)",marginBottom:8}}>P&L at Expiry</div>
               <PayoffDiagram
                 spot={spot} strike={trade.row.strike} premium={tradeGreeks.premium}
-                isCall={trade.side==="call"} contracts={parseFloat(contracts)||1}
+                isCall={trade.side==="call"} short={trade.mode==="write"} contracts={qty}
                 width={284} height={155}
               />
             </div>
@@ -393,21 +412,35 @@ function OptionsPageContent() {
                 </div>
               </div>
               <div style={{background:"var(--bg-elevated)",borderRadius:0,padding:"9px 12px",marginBottom:10}}>
-                {[["Qty",`${contracts} × ${sym}`],
-                  ["Total premium",`$${fmtN(tradeGreeks.premium*(parseFloat(contracts)||1))}`],
-                  ["Max loss",`$${fmtN(tradeGreeks.premium*(parseFloat(contracts)||1))}`],
-                ].map(([k,v])=>(
+                {(trade.mode==="write"?[
+                  ["Qty",`${contracts} × ${sym}`],
+                  ["Premium received",`+$${fmtN(tradeGreeks.premium*qty)}`],
+                  ["Collateral required",`$${fmtN(collateral)}`],
+                  ["Available balance",`$${fmtN(balance,2)}`],
+                ]:[
+                  ["Qty",`${contracts} × ${sym}`],
+                  ["Total premium",`$${fmtN(tradeGreeks.premium*qty)}`],
+                  ["Max loss",`$${fmtN(tradeGreeks.premium*qty)}`],
+                  ["Available balance",`$${fmtN(balance,2)}`],
+                ]).map(([k,v])=>(
                   <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}>
                     <span style={{fontSize:11,color:"var(--text-lo)"}}>{k}</span>
-                    <span className="num" style={{fontSize:11,color:"var(--text-hi)"}}>{v}</span>
+                    <span className="num" style={{fontSize:11,
+                      color:k==="Premium received"?"var(--call)":"var(--text-hi)"}}>{v}</span>
                   </div>
                 ))}
+                {insufficientFunds&&(
+                  <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid var(--border-default)",
+                    fontSize:11,color:"var(--put)"}}>
+                    Insufficient balance {trade.mode==="write"?"to post collateral":"to cover premium"}.
+                  </div>
+                )}
               </div>
-              <button onClick={execTrade} style={{width:"100%",height:44,borderRadius:0,border:"none",cursor:"pointer",
-                fontSize:14,fontWeight:700,
-                background:trade.side==="call"?"var(--call)":"var(--put)",color:"#000",
-                boxShadow:trade.side==="call"?"0 4px 16px rgba(34,197,94,0.25)":"0 4px 16px rgba(244,63,94,0.25)"}}>
-                Buy {trade.side.toUpperCase()} @ {fmtK(trade.row.strike)}
+              <button onClick={execTrade} disabled={insufficientFunds} style={{width:"100%",height:44,borderRadius:0,border:"none",
+                cursor:insufficientFunds?"default":"pointer",fontSize:14,fontWeight:700,
+                opacity:insufficientFunds?0.5:1,
+                background:trade.side==="call"?"var(--call)":"var(--put)",color:"var(--bg)"}}>
+                {trade.mode==="write"?"Write":"Buy"} {trade.side.toUpperCase()} @ {fmtK(trade.row.strike)}
               </button>
             </div>
 
