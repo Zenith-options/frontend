@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { PayoffDiagram } from "../../components/PayoffDiagram";
 import { VolSmile } from "../../components/VolSmile";
 import { AppHeader } from "../../components/AppHeader";
+import { WalletConnect } from "../../components/WalletConnect";
 
 function normCDF(x: number) {
   if (x < -7) return 0; if (x > 7) return 1;
@@ -143,8 +144,7 @@ export default function OptionsPage() {
             }}>{e.label}</button>
           ))}
           <div style={{width:1,height:16,background:"var(--border-default)",margin:"0 8px"}}/>
-          <button style={{padding:"5px 12px",background:"var(--brand)",color:"var(--bg)",
-            border:"none",borderRadius:0,fontSize:12,fontWeight:700,cursor:"pointer"}}>Connect</button>
+          <WalletConnect />
         </div>
       </AppHeader>
 
