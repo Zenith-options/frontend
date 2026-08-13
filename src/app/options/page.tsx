@@ -84,6 +84,11 @@ function OptionsPageContent() {
       return{side:leg.side,action:leg.action,strike,contracts:qty,greeks};
     });
   },[selectedStrategy,spot,market.vol,t,qty]);
+
+  const strategyNetPremium=useMemo(()=>netPremium(pricedLegs),[pricedLegs]);
+  const strategyCollateral=useMemo(()=>pricedLegs.reduce((sum,leg)=>
+    leg.action==="sell"?sum+collateralRequired(leg.side,leg.contracts,leg.strike,spot):sum,0
+  ),[pricedLegs,spot]);
   const collateral=trade&&trade.mode==="write"?collateralRequired(trade.side,qty,trade.row.strike,spot):0;
   const requiredFunds=trade?(trade.mode==="write"?collateral:(tradeGreeks?.premium??0)*qty):0;
   const insufficientFunds=balance<requiredFunds;
@@ -358,6 +363,22 @@ function OptionsPageContent() {
                       <span className="num" style={{fontSize:11,color:"var(--text-hi)"}}>${fmtN(leg.greeks.premium,4)}</span>
                     </div>
                   ))}
+                  <div style={{display:"flex",gap:16,marginTop:10}}>
+                    <div>
+                      <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)"}}>
+                        {strategyNetPremium>=0?"Net Debit":"Net Credit"}
+                      </div>
+                      <div className="num" style={{fontSize:13,fontWeight:600,color:strategyNetPremium>=0?"var(--put)":"var(--call)"}}>
+                        ${fmtN(Math.abs(strategyNetPremium),2)}
+                      </div>
+                    </div>
+                    {strategyCollateral>0&&(
+                      <div>
+                        <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)"}}>Collateral Required</div>
+                        <div className="num" style={{fontSize:13,fontWeight:600,color:"var(--atm)"}}>${fmtN(strategyCollateral,2)}</div>
+                      </div>
+                    )}
+                  </div>
                   <div style={{marginTop:16}}>
                     <MultiLegPayoffDiagram legs={pricedLegs} spot={spot} width={420} height={220}/>
                   </div>
