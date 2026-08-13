@@ -11,8 +11,8 @@ export default function Icon() {
         background: "#14130F",
       }}>
         <svg width="22" height="22" viewBox="0 0 20 20" fill="none">
-          <polygon points="10,2 18,18 2,18" stroke="#C9974C" strokeWidth="1.5" fill="rgba(201,151,76,0.14)" strokeLinejoin="round" />
-          <polygon points="10,7 14.5,16 5.5,16" fill="#C9974C" opacity="0.5" />
+          <polygon points="10,2 18,18 2,18" stroke="#B59665" strokeWidth="1.5" fill="rgba(181,150,101,0.14)" strokeLinejoin="round" />
+          <polygon points="10,7 14.5,16 5.5,16" fill="#B59665" opacity="0.5" />
         </svg>
       </div>
     ),

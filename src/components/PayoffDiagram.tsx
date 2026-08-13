@@ -172,7 +172,7 @@ export function PayoffDiagram({
           {/* Strike vertical */}
           <line
             x1={data.strikeX} y1={0} x2={data.strikeX} y2={H}
-            stroke="rgba(201,151,76,0.4)" strokeWidth={1}
+            stroke="rgba(181,150,101,0.4)" strokeWidth={1}
             strokeDasharray="4 3"
           />
 
@@ -232,7 +232,7 @@ export function PayoffDiagram({
             textAnchor="middle"
             fontSize={9}
             fontFamily="var(--font-mono)"
-            fill="rgba(201,151,76,0.8)"
+            fill="rgba(181,150,101,0.8)"
           >
             K
           </text>

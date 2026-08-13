@@ -199,7 +199,7 @@ export default function Home() {
             <span style={{fontSize:11,color:"var(--text-lo)"}}>ITM Call</span>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <div style={{width:10,height:10,borderRadius:0,background:"var(--atm-dim)",border:"1px solid rgba(201,151,76,0.35)"}}/>
+            <div style={{width:10,height:10,borderRadius:0,background:"var(--atm-dim)",border:"1px solid rgba(181,150,101,0.35)"}}/>
             <span style={{fontSize:11,color:"var(--text-lo)"}}>ATM Strike</span>
           </div>
           <div style={{fontSize:11,color:"var(--text-lo)"}}>Click ask price to trade</div>
@@ -218,10 +218,10 @@ export default function Home() {
             {n:"01",color:"var(--call)",rgb:"92,154,107",side:"Buyer",
               title:"Buy a call or put",
               body:"Pay a USDC premium. If the option expires in-the-money, you receive the difference between spot and strike × your contracts. Maximum loss is the premium paid."},
-            {n:"02",color:"var(--brand)",rgb:"201,151,76",side:"Writer",
+            {n:"02",color:"var(--brand)",rgb:"181,150,101",side:"Writer",
               title:"Write covered options",
               body:"Lock collateral (110%+ for puts, 100% for covered calls), receive the premium immediately. If the option expires worthless, you keep everything. If exercised, your collateral covers the payout."},
-            {n:"03",color:"var(--atm)",rgb:"201,151,76",side:"Pricing",
+            {n:"03",color:"var(--atm)",rgb:"181,150,101",side:"Pricing",
               title:"Black-Scholes with vol smile",
               body:"Premiums use the Black-Scholes formula with a realistic crypto vol smile — higher IV for OTM puts, lower for ATM, slight wing steepening. Greeks (Δ, Γ, Θ, V) available per option."},
             {n:"04",color:"var(--put)",rgb:"182,86,64",side:"Settlement",

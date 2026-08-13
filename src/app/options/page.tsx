@@ -145,7 +145,7 @@ function OptionsPageContent() {
                     <span className="num" style={{fontSize:10,color:"var(--text-mid)"}}>{pct}%</span>
                   </div>
                   <div style={{height:3,background:"var(--bg-overlay)",borderRadius:0}}>
-                    <div style={{width:`${pct}%`,height:"100%",borderRadius:0,background:`rgba(201,151,76,${0.3+pct/100*0.5})`}}/>
+                    <div style={{width:`${pct}%`,height:"100%",borderRadius:0,background:`rgba(181,150,101,${0.3+pct/100*0.5})`}}/>
                   </div>
                 </div>
               );
