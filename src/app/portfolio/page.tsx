@@ -116,6 +116,14 @@ export default function PortfolioPage() {
 
   const [rollTargetId, setRollTargetId] = useState<number|null>(null);
   const rollTarget = soloPositions.find(p => p.id === rollTargetId) ?? null;
+  const [rollStrikeOffsetPct, setRollStrikeOffsetPct] = useState(0);
+  const [rollExpiry, setRollExpiry] = useState(EXPIRIES[2]);
+
+  useEffect(() => {
+    if (!rollTarget) return;
+    setRollStrikeOffsetPct(0);
+    setRollExpiry(EXPIRIES.find(e => e.label === rollTarget.expiryLabel) ?? EXPIRIES[2]);
+  }, [rollTargetId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100vh",background:"var(--bg)",overflow:"hidden",fontFamily:"var(--font-sans)"}}>
@@ -231,7 +239,7 @@ export default function PortfolioPage() {
                   {soloPositions.map(p=>{
                     const expired = p.tRemaining<=0;
                     const sign = p.positionType==="short"?-1:1;
-                    return (
+                    return [
                       <tr key={p.id} style={{borderBottom:"1px solid var(--border-subtle)"}}>
                         <td style={{padding:"10px",fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{p.sym}</td>
                         <td style={{padding:"10px 4px"}}>
@@ -272,8 +280,44 @@ export default function PortfolioPage() {
                             {p.positionType==="short"?"Buy to close":"Sell to close"}
                           </button>
                         </td>
-                      </tr>
-                    );
+                      </tr>,
+                      rollTargetId===p.id && (
+                        <tr key={`${p.id}-roll`} style={{borderBottom:"1px solid var(--border-subtle)",background:"var(--bg-elevated)"}}>
+                          <td colSpan={11} style={{padding:"12px 16px"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+                              <div>
+                                <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>New Strike</div>
+                                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                  <button onClick={()=>setRollStrikeOffsetPct(v=>v-5)} style={{
+                                    background:"var(--bg-overlay)",border:"1px solid var(--border-default)",
+                                    color:"var(--text-mid)",padding:"3px 8px",cursor:"pointer"}}>−5%</button>
+                                  <span className="num" style={{fontSize:12,color:"var(--text-hi)",minWidth:70,textAlign:"center"}}>
+                                    {fmtK(p.strike*(1+rollStrikeOffsetPct/100))}
+                                  </span>
+                                  <button onClick={()=>setRollStrikeOffsetPct(v=>v+5)} style={{
+                                    background:"var(--bg-overlay)",border:"1px solid var(--border-default)",
+                                    color:"var(--text-mid)",padding:"3px 8px",cursor:"pointer"}}>+5%</button>
+                                </div>
+                              </div>
+                              <div>
+                                <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>New Expiry</div>
+                                <div style={{display:"flex",gap:2}}>
+                                  {EXPIRIES.map(e=>(
+                                    <button key={e.label} onClick={()=>setRollExpiry(e)} style={{
+                                      padding:"3px 7px",border:"none",cursor:"pointer",fontSize:11,
+                                      background:rollExpiry.label===e.label?"var(--atm-dim)":"transparent",
+                                      color:rollExpiry.label===e.label?"var(--atm)":"var(--text-lo)"}}>{e.label}</button>
+                                  ))}
+                                </div>
+                              </div>
+                              <button onClick={()=>setRollTargetId(null)} style={{
+                                marginLeft:"auto",fontSize:11,color:"var(--text-lo)",background:"none",
+                                border:"1px solid var(--border-default)",padding:"5px 12px",cursor:"pointer"}}>Cancel</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ),
+                    ];
                   })}
                 </tbody>
               </table>
