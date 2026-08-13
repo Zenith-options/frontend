@@ -50,7 +50,7 @@ export function VolSmile({ spot, baseVol, width = 260, height = 110 }: VolSmileP
     }));
 
     return { pts, path, area, atmX, atmY, yLabels };
-  }, [spot, baseVol]);
+  }, [baseVol, W, H]);
 
   return (
     <div>
@@ -83,7 +83,7 @@ export function VolSmile({ spot, baseVol, width = 260, height = 110 }: VolSmileP
           {/* ATM vertical */}
           <line
             x1={data.atmX} y1={0} x2={data.atmX} y2={H}
-            stroke="rgba(234,179,8,0.2)" strokeWidth={1}
+            stroke="rgba(201,151,76,0.2)" strokeWidth={1}
             strokeDasharray="3 3"
           />
 
@@ -92,14 +92,14 @@ export function VolSmile({ spot, baseVol, width = 260, height = 110 }: VolSmileP
 
           {/* Smile curve */}
           <path d={data.path} fill="none"
-            stroke="#8B5CF6" strokeWidth={1.5}
+            stroke="#C9974C" strokeWidth={1.5}
             strokeLinecap="round" strokeLinejoin="round"
             clipPath="url(#smile-clip)"
           />
 
           {/* ATM dot */}
           <circle cx={data.atmX} cy={data.atmY} r={3}
-            fill="var(--bg-elevated)" stroke="#EAB308" strokeWidth={1.5}
+            fill="var(--bg-elevated)" stroke="#C9974C" strokeWidth={1.5}
           />
 
           {/* Y labels */}
@@ -107,7 +107,7 @@ export function VolSmile({ spot, baseVol, width = 260, height = 110 }: VolSmileP
             <text key={l.v}
               x={-4} y={l.y}
               textAnchor="end" dominantBaseline="middle"
-              fontSize={8} fontFamily="'JetBrains Mono',monospace"
+              fontSize={8} fontFamily="var(--font-mono)"
               fill="var(--text-lo)"
             >
               {l.label}
@@ -121,8 +121,8 @@ export function VolSmile({ spot, baseVol, width = 260, height = 110 }: VolSmileP
               <text key={m}
                 x={x} y={H + 14}
                 textAnchor="middle"
-                fontSize={8} fontFamily="'JetBrains Mono',monospace"
-                fill={m === 1.0 ? "rgba(234,179,8,0.6)" : "var(--text-lo)"}
+                fontSize={8} fontFamily="var(--font-mono)"
+                fill={m === 1.0 ? "rgba(201,151,76,0.6)" : "var(--text-lo)"}
               >
                 {m === 1.0 ? "ATM" : `${Math.round(m * 100)}%`}
               </text>
