@@ -7,6 +7,8 @@ interface PayoffDiagramProps {
   strike: number;
   premium: number;
   isCall: boolean;
+  /** True for a written/short position — mirrors the payoff curve (writer's P&L is the buyer's, negated). */
+  short?: boolean;
   contracts?: number;
   width?: number;
   height?: number;
@@ -18,6 +20,7 @@ export function PayoffDiagram({
   strike,
   premium,
   isCall,
+  short = false,
   contracts = 1,
   width = 340,
   height = 180,
@@ -33,10 +36,11 @@ export function PayoffDiagram({
     const hi = spot * 1.35;
     const range = hi - lo;
 
-    // Payoff function
+    // Payoff function — writer's P&L is the buyer's, negated
     const pnl = (s: number) => {
       const intrinsic = isCall ? Math.max(0, s - strike) : Math.max(0, strike - s);
-      return (intrinsic - premium) * contracts;
+      const buyerPnl = (intrinsic - premium) * contracts;
+      return short ? -buyerPnl : buyerPnl;
     };
 
     const steps = 200;
@@ -45,12 +49,12 @@ export function PayoffDiagram({
       return { s, p: pnl(s) };
     });
 
-    const maxLoss = -premium * contracts;
     const breakeven = isCall ? strike + premium : strike - premium;
 
-    // Y scale: from maxLoss * 1.4 to max positive pnl * 1.2
+    // Y scale: worst/best pnl actually visible in this window, with headroom
     const maxPnl = pts.reduce((m, pt) => Math.max(m, pt.p), 0);
-    const minPnl = Math.min(maxLoss * 1.4, -premium * contracts * 1.2);
+    const worstPnl = pts.reduce((m, pt) => Math.min(m, pt.p), 0);
+    const minPnl = Math.min(worstPnl * 1.3, -premium * contracts * 1.2);
     const yRange = Math.max(maxPnl * 1.2, premium * 2) - minPnl;
 
     const toX = (s: number) => ((s - lo) / range) * W;
@@ -107,9 +111,9 @@ export function PayoffDiagram({
       breakevenX: toX(breakeven),
       breakevenInRange: breakeven >= lo && breakeven <= hi,
       yLabels, xLabels,
-      maxLoss, breakeven, maxPnl,
+      breakeven, maxPnl,
     };
-  }, [spot, strike, premium, isCall, contracts, W, H]);
+  }, [spot, strike, premium, isCall, short, contracts, W, H]);
 
   const color = isCall ? "#5C9A6B" : "#B65640";
   const colorDim = isCall ? "rgba(92,154,107,0.15)" : "rgba(182,86,64,0.15)";
@@ -274,7 +278,9 @@ export function PayoffDiagram({
       {!compact && (
         <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 4 }}>
           {[
-            { label: "Max loss", value: `−$${(premium * contracts).toFixed(2)}`, color: "#B65640" },
+            short
+              ? { label: "Max gain", value: `+$${(premium * contracts).toFixed(2)}`, color: "#5C9A6B" }
+              : { label: "Max loss", value: `−$${(premium * contracts).toFixed(2)}`, color: "#B65640" },
             { label: "Breakeven", value: data.breakeven >= 1 ? `$${data.breakeven.toFixed(2)}` : `$${data.breakeven.toFixed(4)}`, color: color },
           ].map(item => (
             <div key={item.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
