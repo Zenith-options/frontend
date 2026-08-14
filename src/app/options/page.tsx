@@ -227,7 +227,7 @@ function OptionsPageContent() {
 
           <SpotPriceChart history={priceHistory} width={212} height={70}/>
 
-          <VolSmile spot={spot} baseVol={market.vol} width={212} height={110}/>
+          <VolSmile baseVol={market.vol} width={212} height={110}/>
 
           <AlertsPanel sym={sym} spot={spot}/>
 

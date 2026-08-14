@@ -61,11 +61,6 @@ export function PayoffDiagram({
     const toY = (p: number) => H - ((p - minPnl) / yRange) * H;
     const zeroY = toY(0);
 
-    // Build SVG path — split at zero for coloring
-    const above: string[] = [];
-    const below: string[] = [];
-    let prevAbove = pts[0].p >= 0;
-
     const pathData = pts.map((pt, i) => {
       const x = toX(pt.s);
       const y = toY(pt.p);
@@ -116,7 +111,6 @@ export function PayoffDiagram({
   }, [spot, strike, premium, isCall, short, contracts, W, H]);
 
   const color = isCall ? "#5C9A6B" : "#B65640";
-  const colorDim = isCall ? "rgba(92,154,107,0.15)" : "rgba(182,86,64,0.15)";
 
   return (
     <div style={{ width, height }}>
