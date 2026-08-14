@@ -1,19 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useAlertsStore, type AlertDirection } from "../lib/store/alerts";
+import { useEffect, useRef, useState } from "react";
+import { useBackendData } from "../lib/context/BackendDataContext";
+import { useWalletStore } from "../lib/store/wallet";
+import { ApiError } from "../lib/api/client";
 import { requestNotificationPermission, sendNotification } from "../lib/notify";
-import { useHydrated } from "../lib/useHydrated";
+import type { AlertCondition } from "../lib/api/types";
 
 export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
-  const hydrated = useHydrated();
-  const storeAlerts = useAlertsStore(s => s.alerts.filter(a => a.sym === sym));
-  const alerts = useMemo(() => hydrated ? storeAlerts : [], [hydrated, storeAlerts]);
-  const addAlert = useAlertsStore(s => s.addAlert);
-  const removeAlert = useAlertsStore(s => s.removeAlert);
-  const markTriggered = useAlertsStore(s => s.markTriggered);
+  const token = useWalletStore(s => s.token);
+  const { alerts: allAlerts, addAlert, removeAlert } = useBackendData();
+  const alerts = allAlerts.filter(a => a.underlying === sym);
   const [price, setPrice] = useState(() => spot.toFixed(4));
-  const [direction, setDirection] = useState<AlertDirection>("above");
+  const [condition, setCondition] = useState<AlertCondition>("above");
+  const [error, setError] = useState<string|null>(null);
 
   // Re-seed the default price whenever the selected underlying changes —
   // otherwise switching from XLM to BTC leaves the form showing a stale
@@ -22,23 +22,29 @@ export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
     setPrice(spot.toFixed(4));
   }, [sym]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Evaluate this symbol's still-active alerts against the live spot on every tick.
+  // The backend checks alerts against spot server-side every 10s (this
+  // panel just polls its result via useBackendAlerts) — this only
+  // notices a triggered->true transition to fire a browser notification,
+  // it doesn't do any of its own spot-vs-target comparison anymore.
+  const seenTriggered = useRef<Set<string>>(new Set());
   useEffect(() => {
-    for (const a of alerts) {
-      if (a.triggeredAt) continue;
-      const hit = a.direction === "above" ? spot >= a.targetPrice : spot <= a.targetPrice;
-      if (hit) {
-        markTriggered(a.id);
-        sendNotification(`${sym} ${a.direction} $${a.targetPrice.toFixed(4)}`, `Spot is now $${spot.toFixed(4)}`);
-      }
+    for (const a of allAlerts) {
+      if (!a.triggered || seenTriggered.current.has(a.id)) continue;
+      seenTriggered.current.add(a.id);
+      sendNotification(`${a.underlying} ${a.condition} $${a.target_price.toFixed(4)}`, "Alert triggered");
     }
-  }, [spot, alerts, markTriggered, sym]);
+  }, [allAlerts]);
 
-  const submit = () => {
+  const submit = async () => {
     const target = parseFloat(price);
-    if (!target || target <= 0) return;
+    if (!target || target <= 0 || !token) return;
+    setError(null);
     requestNotificationPermission();
-    addAlert(sym, target, direction);
+    try {
+      await addAlert({ underlying: sym, condition, targetPrice: target });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to create alert");
+    }
   };
 
   return (
@@ -48,7 +54,7 @@ export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
       </div>
 
       <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
-        <select value={direction} onChange={e => setDirection(e.target.value as AlertDirection)} style={{
+        <select value={condition} onChange={e => setCondition(e.target.value as AlertCondition)} style={{
           background: "var(--bg-overlay)", border: "1px solid var(--border-default)", color: "var(--text-hi)",
           fontSize: 11, padding: "4px 2px",
         }}>
@@ -59,20 +65,22 @@ export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
           flex: 1, background: "var(--bg-overlay)", border: "1px solid var(--border-default)", color: "var(--text-hi)",
           fontFamily: "var(--font-mono)", fontSize: 11, padding: "4px 6px", width: 0,
         }}/>
-        <button onClick={submit} style={{
+        <button onClick={submit} disabled={!token} title={!token?"Connect your wallet to set alerts":undefined} style={{
           background: "var(--brand)", color: "var(--bg)", border: "none", fontSize: 11, fontWeight: 700,
-          padding: "4px 10px", cursor: "pointer",
+          padding: "4px 10px", cursor: token?"pointer":"default", opacity: token?1:0.5,
         }}>Add</button>
       </div>
+
+      {error && <div style={{ fontSize: 10, color: "var(--put)", marginBottom: 8 }}>{error}</div>}
 
       {alerts.length === 0 ? (
         <div style={{ fontSize: 11, color: "var(--text-lo)" }}>No alerts set for {sym}.</div>
       ) : (
         <div>
-          {alerts.filter(a => !a.triggeredAt).map(a => (
+          {alerts.filter(a => !a.triggered).map(a => (
             <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" }}>
               <span className="num" style={{ fontSize: 11, color: "var(--text-mid)" }}>
-                {a.direction === "above" ? "≥" : "≤"} ${a.targetPrice.toFixed(4)}
+                {a.condition === "above" ? "≥" : "≤"} ${a.target_price.toFixed(4)}
               </span>
               <button onClick={() => removeAlert(a.id)} style={{
                 background: "none", border: "none", color: "var(--text-lo)", fontSize: 14, cursor: "pointer", padding: "0 4px",
@@ -82,15 +90,15 @@ export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
         </div>
       )}
 
-      {alerts.some(a => a.triggeredAt) && (
+      {alerts.some(a => a.triggered) && (
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--atm)", marginBottom: 4 }}>
             Triggered
           </div>
-          {alerts.filter(a => a.triggeredAt).map(a => (
+          {alerts.filter(a => a.triggered).map(a => (
             <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" }}>
               <span className="num" style={{ fontSize: 11, color: "var(--atm)" }}>
-                {a.direction === "above" ? "≥" : "≤"} ${a.targetPrice.toFixed(4)}
+                {a.condition === "above" ? "≥" : "≤"} ${a.target_price.toFixed(4)}
               </span>
               <button onClick={() => removeAlert(a.id)} style={{
                 background: "none", border: "none", color: "var(--text-lo)", fontSize: 14, cursor: "pointer", padding: "0 4px",

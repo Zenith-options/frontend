@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Fraunces, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { StoreHydrator } from "../components/StoreHydrator";
+import { BackendDataProvider } from "../lib/context/BackendDataContext";
+import { SpotFeedProvider } from "../lib/context/SpotFeedContext";
 
 const fraunces = Fraunces({
   subsets: ["latin"], weight: ["400","500","600","700"],
@@ -28,7 +30,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${fraunces.variable} ${plexSans.variable} ${jetbrainsMono.variable}`}>
       <body>
         <StoreHydrator />
-        {children}
+        <SpotFeedProvider>
+          <BackendDataProvider>{children}</BackendDataProvider>
+        </SpotFeedProvider>
       </body>
     </html>
   );
