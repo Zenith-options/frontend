@@ -8,10 +8,10 @@ import { VolSmile } from "../../components/VolSmile";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
 import { MARKETS, EXPIRIES, bs, smileVol, seededRandom, fmtN, fmtSpot, fmtK, type Greeks } from "../../lib/pricing";
-import { getChain, getExpiryCalendar, getSpot } from "../../lib/api/market";
-import type { SpotResponse } from "../../lib/api/types";
+import { getChain, getExpiryCalendar } from "../../lib/api/market";
 import { ApiError } from "../../lib/api/client";
 import { useBackendData } from "../../lib/context/BackendDataContext";
+import { useSpotFeedContext } from "../../lib/context/SpotFeedContext";
 import { useWalletStore } from "../../lib/store/wallet";
 import { collateralRequired } from "../../lib/collateral";
 import { AlertsPanel } from "../../components/AlertsPanel";
@@ -41,11 +41,11 @@ function OptionsPageContent() {
   const params = useSearchParams();
   const [sym, setSym] = useState(params.get("u")??"XLM");
   const [expiry, setExpiry] = useState(EXPIRIES[2]);
-  // Seeded from the same static constants the backend starts with, then
-  // replaced by live data on the first successful poll — this is just
-  // what renders before that first response lands (and what's used if
-  // the backend is unreachable).
-  const [spotData, setSpotData] = useState<SpotResponse|null>(null);
+  // Live from the shared WebSocket feed (SpotFeedProvider, mounted at
+  // the root) — null until the first message arrives or if the socket's
+  // still reconnecting, in which case the static seed constants below
+  // are what render instead.
+  const { data: spotData } = useSpotFeedContext();
   const [trade, setTrade] = useState<TradeState|null>(null);
   const [showTradeConfirm, setShowTradeConfirm] = useState(false);
   const [tradeError, setTradeError] = useState<string|null>(null);
@@ -68,25 +68,13 @@ function OptionsPageContent() {
 
   const t = expiry.days/365;
 
-  // Polls the backend's shared spot/vol simulator rather than running an
-  // independent random walk client-side — every tab (and every other
-  // client) now sees the same numbers instead of each running its own
-  // decoupled fake market.
+  // Standard "previous value" pattern: this effect runs after the
+  // render that already shows the current `spot`, so the ref always
+  // holds what was rendered last time — which is exactly what
+  // `priceDir` below needs to compare against.
   useEffect(()=>{
-    let cancelled=false;
-    const poll=()=>{
-      getSpot().then(data=>{
-        if(cancelled)return;
-        setSpotData(prev=>{
-          prevSpotRef.current=prev?.prices[sym] ?? market.price;
-          return data;
-        });
-      }).catch(()=>{/* keep showing the last known (or seed) values */});
-    };
-    poll();
-    const id=setInterval(poll,2000);
-    return ()=>{cancelled=true;clearInterval(id);};
-  },[sym,market.price]);
+    prevSpotRef.current=spot;
+  },[spot]);
 
   // Backend's expiry list happens to be the same across every underlying
   // (it's not derived from anything symbol-specific yet), but fetching

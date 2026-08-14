@@ -5,9 +5,9 @@ import Link from "next/link";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
 import { useBackendData } from "../../lib/context/BackendDataContext";
+import { useSpotFeedContext } from "../../lib/context/SpotFeedContext";
 import { useWalletStore } from "../../lib/store/wallet";
 import { ApiError } from "../../lib/api/client";
-import { getSpot } from "../../lib/api/market";
 import type { Position } from "../../lib/api/types";
 import { MARKETS, EXPIRIES, bs, smileVol, fmtN, fmtK } from "../../lib/pricing";
 import { collateralRequired } from "../../lib/collateral";
@@ -33,28 +33,12 @@ export default function PortfolioPage() {
   const notSignedIn = !token;
   const [actionError, setActionError] = useState<string|null>(null);
 
-  // GET /api/v1/spot returns every underlying's price/vol in one call, so
-  // marking every open position to market only needs one poll, not one
-  // per symbol held.
-  const [spots, setSpots] = useState<Record<string,number>>(() =>
-    Object.fromEntries(MARKETS.map(m => [m.sym, m.price]))
-  );
-  const [vols, setVols] = useState<Record<string,number>>(() =>
-    Object.fromEntries(MARKETS.map(m => [m.sym, m.vol]))
-  );
-  useEffect(() => {
-    let cancelled = false;
-    const poll = () => {
-      getSpot().then(data => {
-        if (cancelled) return;
-        setSpots(data.prices);
-        setVols(data.vols);
-      }).catch(() => {/* keep showing the last known values */});
-    };
-    poll();
-    const id = setInterval(poll, 2000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, []);
+  // Live from the shared WebSocket feed (SpotFeedProvider) — one
+  // connection covers every underlying, so marking every open position
+  // to market doesn't need its own per-symbol subscription or poll.
+  const { data: spotFeed } = useSpotFeedContext();
+  const spots = spotFeed?.prices ?? Object.fromEntries(MARKETS.map(m => [m.sym, m.price]));
+  const vols = spotFeed?.vols ?? Object.fromEntries(MARKETS.map(m => [m.sym, m.vol]));
 
   // Reprices with the same static expiry_days-as-t the backend itself
   // uses for closing/rolling (see the note in backend/README.md) — this
