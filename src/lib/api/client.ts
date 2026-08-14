@@ -30,8 +30,12 @@ async function request<T>(path: string, init: RequestInit, token?: string | null
     throw new ApiError(res.status, message);
   }
 
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  // Some successful responses (e.g. POST /watchlist's 201, DELETE's 204)
+  // have no body at all — checking status codes for this is brittle
+  // (easy to miss one), so just check whether there's actually anything
+  // to parse instead.
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export function apiGet<T>(path: string, token?: string | null): Promise<T> {
