@@ -10,10 +10,10 @@ import { WalletConnect } from "../../components/WalletConnect";
 import { MARKETS, EXPIRIES, bs, smileVol, seededRandom, fmtN, fmtSpot, fmtK, type Greeks } from "../../lib/pricing";
 import { getChain, getExpiryCalendar, getSpot } from "../../lib/api/market";
 import type { SpotResponse } from "../../lib/api/types";
-import { usePositionsStore, aggregateGreeks } from "../../lib/store/positions";
-import { useAccountStore } from "../../lib/store/account";
+import { ApiError } from "../../lib/api/client";
+import { useBackendData } from "../../lib/context/BackendDataContext";
+import { useWalletStore } from "../../lib/store/wallet";
 import { collateralRequired } from "../../lib/collateral";
-import { useHistoryStore } from "../../lib/store/history";
 import { AlertsPanel } from "../../components/AlertsPanel";
 import { StarButton } from "../../components/StarButton";
 import { SpotPriceChart } from "../../components/SpotPriceChart";
@@ -49,15 +49,14 @@ function OptionsPageContent() {
   const [spotData, setSpotData] = useState<SpotResponse|null>(null);
   const [trade, setTrade] = useState<TradeState|null>(null);
   const [showTradeConfirm, setShowTradeConfirm] = useState(false);
-  const positions = usePositionsStore(s=>s.positions);
-  const addPosition = usePositionsStore(s=>s.addPosition);
-  const debit = useAccountStore(s=>s.debit);
-  const credit = useAccountStore(s=>s.credit);
-  const reserveCollateral = useAccountStore(s=>s.reserveCollateral);
-  const addHistoryRecord = useHistoryStore(s=>s.addRecord);
-  const balance = useAccountStore(s=>s.balance);
+  const [tradeError, setTradeError] = useState<string|null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const favorites = useWatchlistStore(s=>s.favorites);
   const hydrated = useHydrated();
+  const token = useWalletStore(s=>s.token);
+  const {account,positions:backendPositions,greeks:portGreeks,
+    open:openBackendPosition,openStrategy:openBackendStrategy} = useBackendData();
+  const balance = account?.balance ?? 0;
   const market = MARKETS.find(m=>m.sym===sym)??MARKETS[0];
   const spot = spotData?.prices[sym] ?? market.price;
   const vol = spotData?.vols[sym] ?? market.vol;
@@ -159,10 +158,25 @@ function OptionsPageContent() {
     return ()=>clearInterval(id);
   },[sym,expiry.days]);
 
+  // Backend positions don't store per-position Greeks (only the entry
+  // premium/spot) — GET /api/v1/portfolio/greeks gives the aggregate, but
+  // the per-row columns in the table below need a live figure for each
+  // position individually, so this recomputes them the same way
+  // /api/v1/portfolio/greeks does server-side: reprice at current
+  // spot/vol for that position's own underlying, same static
+  // expiry_days-as-t simplification the backend uses for closing.
+  const positionLiveGreeks=(pos:{underlying:string;strike:number;expiry_days:number;option_type:"call"|"put"})=>{
+    const posSpot=spotData?.prices[pos.underlying]
+      ?? MARKETS.find(m=>m.sym===pos.underlying)?.price ?? spot;
+    const posVol=spotData?.vols[pos.underlying]
+      ?? MARKETS.find(m=>m.sym===pos.underlying)?.vol ?? vol;
+    const posT=pos.expiry_days/365;
+    const v=smileVol(posVol,pos.strike/posSpot);
+    return bs(posSpot,pos.strike,v,posT,pos.option_type==="call");
+  };
+
   const atmIdx=chain.findIndex(r=>!r.itmCall);
   const tradeGreeks=trade?(trade.side==="call"?trade.row.call:trade.row.put):null;
-
-  const portGreeks=useMemo(()=>aggregateGreeks(positions),[positions]);
 
   const qty=Math.max(0.01,parseFloat(contracts)||1);
 
@@ -191,65 +205,44 @@ function OptionsPageContent() {
   const collateral=trade&&trade.mode==="write"?collateralRequired(trade.side,qty,trade.row.strike,spot):0;
   const requiredFunds=trade?(trade.mode==="write"?collateral:(tradeGreeks?.premium??0)*qty):0;
   const insufficientFunds=balance<requiredFunds;
+  const notSignedIn=!token;
 
-  const execTrade=()=>{
-    if(!trade||!tradeGreeks||insufficientFunds)return;
-    const totalPremium=tradeGreeks.premium*qty;
-    if(trade.mode==="write"){
-      if(!reserveCollateral(collateral))return;
-      addPosition({
-        sym,side:trade.side,positionType:"short",strike:trade.row.strike,
-        expiryLabel:expiry.label,expiryDays:expiry.days,
-        contracts:qty,entrySpot:spot,premium:totalPremium,collateral,
-        delta:tradeGreeks.delta,gamma:tradeGreeks.gamma,theta:tradeGreeks.theta,vega:tradeGreeks.vega,
+  const execTrade=async()=>{
+    if(!trade||!tradeGreeks||insufficientFunds||submitting)return;
+    setSubmitting(true);
+    setTradeError(null);
+    try{
+      await openBackendPosition({
+        underlying:sym,strike:trade.row.strike,expiryDays:expiry.days,
+        optionType:trade.side,positionType:trade.mode==="write"?"short":"long",contracts:qty,
       });
-      credit(totalPremium);
-      addHistoryRecord({
-        sym,side:trade.side,positionType:"short",action:"open",
-        strike:trade.row.strike,expiryLabel:expiry.label,contracts:qty,premium:totalPremium,
-      });
-    }else{
-      addPosition({
-        sym,side:trade.side,positionType:"long",strike:trade.row.strike,
-        expiryLabel:expiry.label,expiryDays:expiry.days,
-        contracts:qty,entrySpot:spot,premium:totalPremium,collateral:0,
-        delta:tradeGreeks.delta,gamma:tradeGreeks.gamma,theta:tradeGreeks.theta,vega:tradeGreeks.vega,
-      });
-      debit(totalPremium);
-      addHistoryRecord({
-        sym,side:trade.side,positionType:"long",action:"open",
-        strike:trade.row.strike,expiryLabel:expiry.label,contracts:qty,premium:totalPremium,
-      });
+      setTrade(null);
+      setShowTradeConfirm(false);
+      setViewTab("positions");
+    }catch(err){
+      setTradeError(err instanceof ApiError?err.message:"Failed to open position");
+    }finally{
+      setSubmitting(false);
     }
-    setTrade(null);
-    setShowTradeConfirm(false);
-    setViewTab("positions");
   };
 
-  const execStrategy=()=>{
-    if(!selectedStrategy||pricedLegs.length===0||strategyInsufficientFunds)return;
-    if(strategyCollateral>0&&!reserveCollateral(strategyCollateral))return;
-    const strategyId=`strat-${Date.now()}`;
-    for(const leg of pricedLegs){
-      const legPremium=leg.greeks.premium*leg.contracts;
-      const positionType=leg.action==="buy"?"long":"short";
-      const legCollateral=leg.action==="sell"?collateralRequired(leg.side,leg.contracts,leg.strike,spot):0;
-      addPosition({
-        sym,side:leg.side,positionType,strike:leg.strike,
-        expiryLabel:expiry.label,expiryDays:expiry.days,
-        contracts:leg.contracts,entrySpot:spot,premium:legPremium,collateral:legCollateral,
-        delta:leg.greeks.delta,gamma:leg.greeks.gamma,theta:leg.greeks.theta,vega:leg.greeks.vega,
-        strategyId,
-      });
-      if(leg.action==="buy")debit(legPremium);else credit(legPremium);
-      addHistoryRecord({
-        sym,side:leg.side,positionType,action:"open",
-        strike:leg.strike,expiryLabel:expiry.label,contracts:leg.contracts,premium:legPremium,
-      });
+  const execStrategy=async()=>{
+    if(!selectedStrategy||pricedLegs.length===0||strategyInsufficientFunds||submitting)return;
+    setSubmitting(true);
+    setTradeError(null);
+    try{
+      await openBackendStrategy(pricedLegs.map(leg=>({
+        underlying:sym,strike:leg.strike,expiryDays:expiry.days,
+        optionType:leg.side,positionType:leg.action==="buy"?"long":"short",contracts:leg.contracts,
+      })));
+      setSelectedStrategy(null);
+      setShowStrategyConfirm(false);
+      setViewTab("positions");
+    }catch(err){
+      setTradeError(err instanceof ApiError?err.message:"Failed to execute strategy");
+    }finally{
+      setSubmitting(false);
     }
-    setSelectedStrategy(null);
-    setShowStrategyConfirm(false);
-    setViewTab("positions");
   };
 
   const priceDir = spot >= prevSpotRef.current;
@@ -339,7 +332,7 @@ function OptionsPageContent() {
             })}
           </div>
 
-          {hydrated&&positions.length>0&&(
+          {hydrated&&backendPositions.length>0&&(
             <div>
               <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--text-lo)",marginBottom:8}}>Portfolio Greeks</div>
               {[{g:"Δ Net Delta",v:portGreeks.delta,dp:3},{g:"Γ Net Gamma",v:portGreeks.gamma,dp:4},
@@ -368,7 +361,7 @@ function OptionsPageContent() {
                 color:viewTab===tab?"var(--text-hi)":"var(--text-lo)",
                 borderBottom:viewTab===tab?"2px solid var(--brand)":"2px solid transparent",
                 marginBottom:-1,
-              }}>{tab}{tab==="positions"&&hydrated&&positions.length>0?` (${positions.length})`:""}</button>
+              }}>{tab}{tab==="positions"&&hydrated&&backendPositions.length>0?` (${backendPositions.length})`:""}</button>
             ))}
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",paddingRight:4}}>
               <span style={{fontSize:10,color:"var(--text-lo)"}}>{sym}-USD · {expiry.label} · {chain.length} strikes · Click ask to buy, bid to write</span>
@@ -429,7 +422,7 @@ function OptionsPageContent() {
 
           {viewTab==="positions"&&(
             <div style={{flex:1,overflowY:"auto"}}>
-              {positions.length===0?(
+              {backendPositions.length===0?(
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",gap:8}}>
                   <div style={{fontSize:13,color:"var(--text-lo)"}}>No open positions</div>
                   <button onClick={()=>setViewTab("chain")} style={{fontSize:11,color:"var(--brand)",background:"none",border:"none",cursor:"pointer"}}>← Back to chain</button>
@@ -445,28 +438,29 @@ function OptionsPageContent() {
                     </tr>
                   </thead>
                   <tbody>
-                    {positions.map(pos=>{
-                      const sign=pos.positionType==="short"?-1:1;
+                    {backendPositions.map(pos=>{
+                      const sign=pos.position_type==="short"?-1:1;
+                      const g=positionLiveGreeks(pos);
                       return(
                       <tr key={pos.id} style={{borderBottom:"1px solid var(--border-subtle)"}}>
-                        <td style={{padding:"8px",fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{pos.sym}</td>
+                        <td style={{padding:"8px",fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{pos.underlying}</td>
                         <td style={{padding:"8px 4px"}}>
                           <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",borderRadius:0,
-                            background:pos.positionType==="short"?"var(--put-dim)":"var(--call-dim)",
-                            color:pos.positionType==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
-                            {pos.positionType}
+                            background:pos.position_type==="short"?"var(--put-dim)":"var(--call-dim)",
+                            color:pos.position_type==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
+                            {pos.position_type}
                           </span>
                         </td>
                         <td style={{padding:"8px 4px"}}>
                           <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",borderRadius:0,
-                            background:pos.side==="call"?"var(--call-dim)":"var(--put-dim)",
-                            color:pos.side==="call"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>
-                            {pos.side}
+                            background:pos.option_type==="call"?"var(--call-dim)":"var(--put-dim)",
+                            color:pos.option_type==="call"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>
+                            {pos.option_type}
                           </span>
                         </td>
-                        {[fmtK(pos.strike),pos.expiryLabel,pos.contracts.toFixed(0),
-                          (sign*pos.delta*pos.contracts).toFixed(3),(sign*pos.gamma*pos.contracts).toFixed(4),
-                          (sign*pos.theta*pos.contracts).toFixed(4),(sign*pos.vega*pos.contracts).toFixed(3)
+                        {[fmtK(pos.strike),`${pos.expiry_days}D`,pos.contracts.toFixed(0),
+                          (sign*g.delta*pos.contracts).toFixed(3),(sign*g.gamma*pos.contracts).toFixed(4),
+                          (sign*g.theta*pos.contracts).toFixed(4),(sign*g.vega*pos.contracts).toFixed(3)
                         ].map((v,j)=>(
                           <td key={j} className="num" style={{padding:"8px",fontSize:11,textAlign:"right",
                             color:j===5?"var(--put)":"var(--text-hi)"}}>{v}</td>
@@ -519,14 +513,19 @@ function OptionsPageContent() {
                   <div style={{marginTop:16}}>
                     <MultiLegPayoffDiagram legs={pricedLegs} spot={spot} width={420} height={220}/>
                   </div>
-                  <button onClick={()=>setShowStrategyConfirm(true)} disabled={strategyInsufficientFunds} style={{marginTop:12,padding:"10px 20px",
+                  <button onClick={()=>{setTradeError(null);setShowStrategyConfirm(true);}} disabled={strategyInsufficientFunds||notSignedIn} style={{marginTop:12,padding:"10px 20px",
                     background:"var(--brand)",color:"var(--bg)",border:"none",fontSize:13,fontWeight:700,
-                    cursor:strategyInsufficientFunds?"default":"pointer",opacity:strategyInsufficientFunds?0.5:1}}>
+                    cursor:strategyInsufficientFunds||notSignedIn?"default":"pointer",opacity:strategyInsufficientFunds||notSignedIn?0.5:1}}>
                     Execute {selectedStrategy.name} ({pricedLegs.length} legs)
                   </button>
                   {strategyInsufficientFunds&&(
                     <div style={{marginTop:6,fontSize:11,color:"var(--put)"}}>
                       Insufficient balance — needs ${fmtN(strategyRequiredFunds,2)}, have ${fmtN(balance,2)}.
+                    </div>
+                  )}
+                  {notSignedIn&&(
+                    <div style={{marginTop:6,fontSize:11,color:"var(--put)"}}>
+                      Connect your wallet to trade.
                     </div>
                   )}
                 </div>
@@ -540,7 +539,7 @@ function OptionsPageContent() {
             </div>
           )}
 
-          {hydrated&&positions.length>0&&(
+          {hydrated&&backendPositions.length>0&&(
             <div style={{height:36,flexShrink:0,borderTop:"1px solid var(--border-default)",
               display:"flex",alignItems:"center",gap:20,padding:"0 16px",background:"var(--bg-raised)"}}>
               <span style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)"}}>Portfolio</span>
@@ -671,10 +670,22 @@ function OptionsPageContent() {
                     Insufficient balance {trade.mode==="write"?"to post collateral":"to cover premium"}.
                   </div>
                 )}
+                {notSignedIn&&(
+                  <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid var(--border-default)",
+                    fontSize:11,color:"var(--put)"}}>
+                    Connect your wallet to trade.
+                  </div>
+                )}
+                {tradeError&&(
+                  <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid var(--border-default)",
+                    fontSize:11,color:"var(--put)"}}>
+                    {tradeError}
+                  </div>
+                )}
               </div>
-              <button onClick={()=>setShowTradeConfirm(true)} disabled={insufficientFunds} style={{width:"100%",height:44,borderRadius:0,border:"none",
-                cursor:insufficientFunds?"default":"pointer",fontSize:14,fontWeight:700,
-                opacity:insufficientFunds?0.5:1,
+              <button onClick={()=>{setTradeError(null);setShowTradeConfirm(true);}} disabled={insufficientFunds||notSignedIn} style={{width:"100%",height:44,borderRadius:0,border:"none",
+                cursor:insufficientFunds||notSignedIn?"default":"pointer",fontSize:14,fontWeight:700,
+                opacity:insufficientFunds||notSignedIn?0.5:1,
                 background:trade.side==="call"?"var(--call)":"var(--put)",color:"var(--bg)"}}>
                 {trade.mode==="write"?"Write":"Buy"} {trade.side.toUpperCase()} @ {fmtK(trade.row.strike)}
               </button>
@@ -716,11 +727,11 @@ function OptionsPageContent() {
       {showTradeConfirm&&trade&&tradeGreeks&&(
         <ConfirmDialog
           title={`${trade.mode==="write"?"Write":"Buy"} ${sym} ${trade.side.toUpperCase()}`}
-          confirmLabel={`Confirm ${trade.mode==="write"?"Write":"Buy"}`}
+          confirmLabel={submitting?"Submitting…":`Confirm ${trade.mode==="write"?"Write":"Buy"}`}
           onConfirm={execTrade}
           onCancel={()=>setShowTradeConfirm(false)}
-          disabled={insufficientFunds}
-          disabledReason={insufficientFunds?`Insufficient balance ${trade.mode==="write"?"to post collateral":"to cover premium"}.`:undefined}
+          disabled={insufficientFunds||notSignedIn||submitting||!!tradeError}
+          disabledReason={tradeError??(insufficientFunds?`Insufficient balance ${trade.mode==="write"?"to post collateral":"to cover premium"}.`:undefined)}
         >
           {[
             ["Strike",fmtK(trade.row.strike)],
@@ -740,11 +751,11 @@ function OptionsPageContent() {
       {showStrategyConfirm&&selectedStrategy&&(
         <ConfirmDialog
           title={`Execute ${selectedStrategy.name}`}
-          confirmLabel="Confirm Execute"
+          confirmLabel={submitting?"Submitting…":"Confirm Execute"}
           onConfirm={execStrategy}
           onCancel={()=>setShowStrategyConfirm(false)}
-          disabled={strategyInsufficientFunds}
-          disabledReason={strategyInsufficientFunds?`Insufficient balance — needs $${fmtN(strategyRequiredFunds,2)}, have $${fmtN(balance,2)}.`:undefined}
+          disabled={strategyInsufficientFunds||notSignedIn||submitting||!!tradeError}
+          disabledReason={tradeError??(strategyInsufficientFunds?`Insufficient balance — needs $${fmtN(strategyRequiredFunds,2)}, have $${fmtN(balance,2)}.`:notSignedIn?"Connect your wallet to trade.":undefined)}
         >
           {pricedLegs.map((leg,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12}}>
