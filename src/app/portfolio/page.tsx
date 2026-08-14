@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
-import { usePositionsStore, aggregateGreeks, type Position } from "../../lib/store/positions";
-import { useAccountStore } from "../../lib/store/account";
-import { useHistoryStore } from "../../lib/store/history";
+import { useBackendData } from "../../lib/context/BackendDataContext";
+import { useWalletStore } from "../../lib/store/wallet";
+import { ApiError } from "../../lib/api/client";
+import { getSpot } from "../../lib/api/market";
+import type { Position } from "../../lib/api/types";
 import { MARKETS, EXPIRIES, bs, smileVol, fmtN, fmtK } from "../../lib/pricing";
 import { collateralRequired } from "../../lib/collateral";
 import { toCsv, downloadCsv } from "../../lib/csv";
@@ -14,7 +16,6 @@ import { ExportButton } from "../../components/ExportButton";
 
 interface Marked extends Position {
   spot: number;
-  tRemaining: number;
   currentPremium: number;
   pnl: number;
   pnlPct: number;
@@ -25,96 +26,100 @@ interface Marked extends Position {
 }
 
 export default function PortfolioPage() {
-  const positions = usePositionsStore(s => s.positions);
-  const closePosition = usePositionsStore(s => s.closePosition);
-  const addPosition = usePositionsStore(s => s.addPosition);
-  const balance = useAccountStore(s => s.balance);
-  const collateralLocked = useAccountStore(s => s.collateralLocked);
-  const releaseCollateral = useAccountStore(s => s.releaseCollateral);
-  const reserveCollateral = useAccountStore(s => s.reserveCollateral);
-  const credit = useAccountStore(s => s.credit);
-  const debit = useAccountStore(s => s.debit);
-  const addHistoryRecord = useHistoryStore(s => s.addRecord);
+  const token = useWalletStore(s => s.token);
+  const { account, positions: backendPositions, greeks: netGreeks, close, roll } = useBackendData();
+  const balance = account?.balance ?? 0;
+  const collateralLocked = account?.collateral_locked ?? 0;
+  const notSignedIn = !token;
+  const [actionError, setActionError] = useState<string|null>(null);
 
-  // Tick every underlying's spot so open positions can be marked-to-market live,
-  // same random-walk model the chain page uses.
-  const [spots, setSpots] = useState<Record<string, number>>(() =>
+  // GET /api/v1/spot returns every underlying's price/vol in one call, so
+  // marking every open position to market only needs one poll, not one
+  // per symbol held.
+  const [spots, setSpots] = useState<Record<string,number>>(() =>
     Object.fromEntries(MARKETS.map(m => [m.sym, m.price]))
   );
+  const [vols, setVols] = useState<Record<string,number>>(() =>
+    Object.fromEntries(MARKETS.map(m => [m.sym, m.vol]))
+  );
   useEffect(() => {
-    const id = setInterval(() => {
-      setSpots(prev => {
-        const next = { ...prev };
-        for (const m of MARKETS) next[m.sym] = Math.max(0.0001, next[m.sym] + (Math.random() - 0.5) * 0.001 * m.price);
-        return next;
-      });
-    }, 2000);
-    return () => clearInterval(id);
+    let cancelled = false;
+    const poll = () => {
+      getSpot().then(data => {
+        if (cancelled) return;
+        setSpots(data.prices);
+        setVols(data.vols);
+      }).catch(() => {/* keep showing the last known values */});
+    };
+    poll();
+    const id = setInterval(poll, 2000);
+    return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  const marked = useMemo<Marked[]>(() => positions.map(p => {
-    const market = MARKETS.find(m => m.sym === p.sym) ?? MARKETS[0];
-    const spot = spots[p.sym] ?? market.price;
-    const tRemaining = Math.max(0, (p.expiresAt - Date.now()) / (365 * 86_400_000));
-    const vol = smileVol(market.vol, p.strike / spot);
-    const g = bs(spot, p.strike, vol, tRemaining, p.side === "call");
+  // Reprices with the same static expiry_days-as-t the backend itself
+  // uses for closing/rolling (see the note in backend/README.md) — this
+  // way the preview shown here matches what a close/roll will actually
+  // produce, rather than decaying against a real elapsed-time clock the
+  // backend doesn't track.
+  const marked = useMemo<Marked[]>(() => backendPositions.map(p => {
+    const spot = spots[p.underlying] ?? MARKETS.find(m => m.sym === p.underlying)?.price ?? 0;
+    const baseVol = vols[p.underlying] ?? MARKETS.find(m => m.sym === p.underlying)?.vol ?? 0.5;
+    const t = p.expiry_days / 365;
+    const vol = smileVol(baseVol, p.strike / spot);
+    const g = bs(spot, p.strike, vol, t, p.option_type === "call");
+    const entryTotal = p.entry_premium * p.contracts;
     const currentPremium = g.premium * p.contracts;
     // Long: profit when current value rises above what was paid.
     // Short: profit when it costs less than the premium collected to close it out.
-    const pnl = p.positionType === "short" ? p.premium - currentPremium : currentPremium - p.premium;
+    const pnl = p.position_type === "short" ? entryTotal - currentPremium : currentPremium - entryTotal;
     return {
-      ...p, spot, tRemaining, currentPremium, pnl,
-      pnlPct: p.premium > 0 ? (pnl / p.premium) * 100 : 0,
+      ...p, spot, currentPremium, pnl,
+      pnlPct: entryTotal > 0 ? (pnl / entryTotal) * 100 : 0,
       liveDelta: g.delta, liveGamma: g.gamma, liveTheta: g.theta, liveVega: g.vega,
     };
-  }), [positions, spots]);
+  }), [backendPositions, spots, vols]);
 
   const totalPnl = useMemo(() => marked.reduce((s, p) => s + p.pnl, 0), [marked]);
 
   const strategyGroups = useMemo(() => {
     const byId = new Map<string, Marked[]>();
     for (const p of marked) {
-      if (!p.strategyId) continue;
-      if (!byId.has(p.strategyId)) byId.set(p.strategyId, []);
-      byId.get(p.strategyId)!.push(p);
+      if (!p.strategy_id) continue;
+      if (!byId.has(p.strategy_id)) byId.set(p.strategy_id, []);
+      byId.get(p.strategy_id)!.push(p);
     }
     return Array.from(byId.entries()).map(([id, legs]) => ({
       id, legs,
-      sym: legs[0].sym,
+      sym: legs[0].underlying,
       totalPnl: legs.reduce((s, l) => s + l.pnl, 0),
       totalCollateral: legs.reduce((s, l) => s + l.collateral, 0),
     }));
   }, [marked]);
 
-  const soloPositions = useMemo(() => marked.filter(p => !p.strategyId), [marked]);
-
-  const netGreeks = useMemo(() => aggregateGreeks(
-    marked.map(p => ({ ...p, delta: p.liveDelta, gamma: p.liveGamma, theta: p.liveTheta, vega: p.liveVega }))
-  ), [marked]);
+  const soloPositions = useMemo(() => marked.filter(p => !p.strategy_id), [marked]);
 
   // Realize the position's P&L into the account balance and release any
   // collateral, then remove it. This is the one place a position actually
   // settles — the quick view on the chain page just links here.
-  const handleClose = (p: Marked) => {
-    if (p.positionType === "short") {
-      releaseCollateral(p.collateral);
-      debit(p.currentPremium);
-    } else {
-      credit(p.currentPremium);
+  const handleClose = async (p: Marked) => {
+    setActionError(null);
+    try {
+      await close(p.id);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Failed to close position");
     }
-    addHistoryRecord({
-      sym: p.sym, side: p.side, positionType: p.positionType, action: "close",
-      strike: p.strike, expiryLabel: p.expiryLabel, contracts: p.contracts,
-      premium: p.currentPremium, realizedPnl: p.pnl,
-    });
-    closePosition(p.id);
   };
 
-  const handleCloseStrategy = (legs: Marked[]) => {
-    for (const leg of legs) handleClose(leg);
+  const handleCloseStrategy = async (legs: Marked[]) => {
+    setActionError(null);
+    try {
+      for (const leg of legs) await close(leg.id);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Failed to close strategy");
+    }
   };
 
-  const [rollTargetId, setRollTargetId] = useState<number|null>(null);
+  const [rollTargetId, setRollTargetId] = useState<string|null>(null);
   const rollTarget = soloPositions.find(p => p.id === rollTargetId) ?? null;
   const [rollStrikeOffsetPct, setRollStrikeOffsetPct] = useState(0);
   const [rollExpiry, setRollExpiry] = useState(EXPIRIES[2]);
@@ -122,76 +127,56 @@ export default function PortfolioPage() {
   useEffect(() => {
     if (!rollTarget) return;
     setRollStrikeOffsetPct(0);
-    setRollExpiry(EXPIRIES.find(e => e.label === rollTarget.expiryLabel) ?? EXPIRIES[2]);
+    setRollExpiry(EXPIRIES.find(e => e.days === rollTarget.expiry_days) ?? EXPIRIES[2]);
   }, [rollTargetId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rollPreview = useMemo(() => {
     if (!rollTarget) return null;
-    const market = MARKETS.find(m => m.sym === rollTarget.sym) ?? MARKETS[0];
-    const spot = spots[rollTarget.sym] ?? market.price;
+    const spot = spots[rollTarget.underlying] ?? MARKETS.find(m => m.sym === rollTarget.underlying)?.price ?? 0;
+    const baseVol = vols[rollTarget.underlying] ?? MARKETS.find(m => m.sym === rollTarget.underlying)?.vol ?? 0.5;
     const newStrike = Math.round(rollTarget.strike * (1 + rollStrikeOffsetPct / 100) * 10000) / 10000;
     const t = rollExpiry.days / 365;
-    const vol = smileVol(market.vol, newStrike / spot);
-    const greeks = bs(spot, newStrike, vol, t, rollTarget.side === "call");
+    const vol = smileVol(baseVol, newStrike / spot);
+    const greeks = bs(spot, newStrike, vol, t, rollTarget.option_type === "call");
     const newPremium = greeks.premium * rollTarget.contracts;
-    const newCollateral = rollTarget.positionType === "short"
-      ? collateralRequired(rollTarget.side, rollTarget.contracts, newStrike, spot) : 0;
+    const newCollateral = rollTarget.position_type === "short"
+      ? collateralRequired(rollTarget.option_type, rollTarget.contracts, newStrike, spot) : 0;
 
-    // Same cash math as handleClose (old leg) + execTrade (new leg), just summed
-    // into one net figure instead of applied as two separate trades.
-    const closeCashEffect = rollTarget.positionType === "short"
+    // Same cash math as handleClose (old leg) + open (new leg), just summed
+    // into one net figure instead of applied as two separate trades. This
+    // is a client-side estimate only — the backend computes the real
+    // numbers atomically when Confirm Roll is actually clicked.
+    const closeCashEffect = rollTarget.position_type === "short"
       ? rollTarget.collateral - rollTarget.currentPremium
       : rollTarget.currentPremium;
-    const openCashEffect = rollTarget.positionType === "short"
+    const openCashEffect = rollTarget.position_type === "short"
       ? newPremium - newCollateral
       : -newPremium;
     const netCashEffect = closeCashEffect + openCashEffect;
 
     return { spot, newStrike, greeks, newPremium, newCollateral, closeCashEffect, netCashEffect };
-  }, [rollTarget, rollStrikeOffsetPct, rollExpiry, spots]);
+  }, [rollTarget, rollStrikeOffsetPct, rollExpiry, spots, vols]);
 
   // After releasing the old leg's collateral and settling its P&L, does the
-  // resulting balance actually cover what opening the new leg needs?
+  // resulting balance actually cover what opening the new leg needs? Just a
+  // preview check — the backend is the final authority when Confirm Roll runs.
   const rollInsufficientFunds = rollTarget && rollPreview
-    ? balance + rollPreview.closeCashEffect < (rollTarget.positionType === "short" ? rollPreview.newCollateral : rollPreview.newPremium)
+    ? balance + rollPreview.closeCashEffect < (rollTarget.position_type === "short" ? rollPreview.newCollateral : rollPreview.newPremium)
     : false;
 
-  const executeRoll = () => {
-    if (!rollTarget || !rollPreview || rollInsufficientFunds) return;
-
-    // Close the old leg exactly like handleClose.
-    if (rollTarget.positionType === "short") {
-      releaseCollateral(rollTarget.collateral);
-      debit(rollTarget.currentPremium);
-    } else {
-      credit(rollTarget.currentPremium);
+  const [rolling, setRolling] = useState(false);
+  const executeRoll = async () => {
+    if (!rollTarget || !rollPreview || rollInsufficientFunds || rolling) return;
+    setRolling(true);
+    setActionError(null);
+    try {
+      await roll(rollTarget.id, { newStrike: rollPreview.newStrike, newExpiryDays: rollExpiry.days });
+      setRollTargetId(null);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Failed to roll position");
+    } finally {
+      setRolling(false);
     }
-    addHistoryRecord({
-      sym: rollTarget.sym, side: rollTarget.side, positionType: rollTarget.positionType, action: "close",
-      strike: rollTarget.strike, expiryLabel: rollTarget.expiryLabel, contracts: rollTarget.contracts,
-      premium: rollTarget.currentPremium, realizedPnl: rollTarget.pnl,
-    });
-    closePosition(rollTarget.id);
-
-    // Open the new leg at the chosen strike/expiry.
-    if (rollTarget.positionType === "short") {
-      reserveCollateral(rollPreview.newCollateral);
-      credit(rollPreview.newPremium);
-    } else {
-      debit(rollPreview.newPremium);
-    }
-    addPosition({
-      sym: rollTarget.sym, side: rollTarget.side, positionType: rollTarget.positionType, strike: rollPreview.newStrike,
-      expiryLabel: rollExpiry.label, expiryDays: rollExpiry.days,
-      contracts: rollTarget.contracts, entrySpot: rollPreview.spot, premium: rollPreview.newPremium, collateral: rollPreview.newCollateral,
-      delta: rollPreview.greeks.delta, gamma: rollPreview.greeks.gamma, theta: rollPreview.greeks.theta, vega: rollPreview.greeks.vega,
-    });
-    addHistoryRecord({
-      sym: rollTarget.sym, side: rollTarget.side, positionType: rollTarget.positionType, action: "open",
-      strike: rollPreview.newStrike, expiryLabel: rollExpiry.label, contracts: rollTarget.contracts, premium: rollPreview.newPremium,
-    });
-
-    setRollTargetId(null);
   };
 
   return (
@@ -211,22 +196,24 @@ export default function PortfolioPage() {
             <div>
               <h1 style={{fontFamily:"var(--font-serif)",fontSize:26,fontWeight:600,marginBottom:4}}>Portfolio</h1>
               <p style={{fontSize:13,color:"var(--text-mid)",marginBottom:28}}>
-                {positions.length} open position{positions.length===1?"":"s"} · live premium repriced off current spot
+                {notSignedIn
+                  ? "Connect your wallet to see your positions."
+                  : `${backendPositions.length} open position${backendPositions.length===1?"":"s"} · live premium repriced off current spot`}
               </p>
             </div>
             {marked.length>0 && (
               <ExportButton onClick={()=>downloadCsv(
                 `zenith-positions-${new Date().toISOString().slice(0,10)}.csv`,
                 toCsv(marked,[
-                  {header:"Asset",value:p=>p.sym},
-                  {header:"Type",value:p=>p.positionType},
-                  {header:"Side",value:p=>p.side},
+                  {header:"Asset",value:p=>p.underlying},
+                  {header:"Type",value:p=>p.position_type},
+                  {header:"Side",value:p=>p.option_type},
                   {header:"Strike",value:p=>p.strike},
-                  {header:"Expiry",value:p=>p.expiryLabel},
+                  {header:"Expiry",value:p=>`${p.expiry_days}D`},
                   {header:"Qty",value:p=>p.contracts},
-                  {header:"Strategy",value:p=>p.strategyId??""},
+                  {header:"Strategy",value:p=>p.strategy_id??""},
                   {header:"Collateral",value:p=>p.collateral},
-                  {header:"Entry Premium",value:p=>p.premium},
+                  {header:"Entry Premium",value:p=>p.entry_premium*p.contracts},
                   {header:"Current Value",value:p=>p.currentPremium},
                   {header:"P&L",value:p=>p.pnl},
                 ])
@@ -251,6 +238,12 @@ export default function PortfolioPage() {
             ))}
           </div>
 
+          {actionError && (
+            <div style={{marginBottom:16,padding:"10px 14px",border:"1px solid var(--put)",background:"var(--put-dim)",fontSize:12,color:"var(--put)"}}>
+              {actionError}
+            </div>
+          )}
+
           {strategyGroups.length>0 && (
             <div style={{marginBottom:24,display:"flex",flexDirection:"column",gap:8}}>
               {strategyGroups.map(g=>(
@@ -263,8 +256,8 @@ export default function PortfolioPage() {
                   </div>
                   {g.legs.map(leg=>(
                     <div key={leg.id} style={{display:"flex",justifyContent:"space-between",padding:"2px 0",fontSize:11}}>
-                      <span style={{color:leg.positionType==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
-                        {leg.positionType} {leg.side}
+                      <span style={{color:leg.position_type==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
+                        {leg.position_type} {leg.option_type}
                       </span>
                       <span className="num" style={{color:"var(--text-mid)"}}>K={leg.strike.toFixed(4)}</span>
                       <span className="num" style={{color:leg.pnl>=0?"var(--call)":"var(--put)"}}>
@@ -306,31 +299,30 @@ export default function PortfolioPage() {
                 </thead>
                 <tbody>
                   {soloPositions.map(p=>{
-                    const expired = p.tRemaining<=0;
-                    const sign = p.positionType==="short"?-1:1;
+                    const sign = p.position_type==="short"?-1:1;
                     return [
                       <tr key={p.id} style={{borderBottom:"1px solid var(--border-subtle)"}}>
-                        <td style={{padding:"10px",fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{p.sym}</td>
+                        <td style={{padding:"10px",fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{p.underlying}</td>
                         <td style={{padding:"10px 4px"}}>
                           <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",
-                            background:p.positionType==="short"?"var(--put-dim)":"var(--call-dim)",
-                            color:p.positionType==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
-                            {p.positionType}
+                            background:p.position_type==="short"?"var(--put-dim)":"var(--call-dim)",
+                            color:p.position_type==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
+                            {p.position_type}
                           </span>
                         </td>
                         <td style={{padding:"10px 4px"}}>
                           <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",
-                            background:p.side==="call"?"var(--call-dim)":"var(--put-dim)",
-                            color:p.side==="call"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>
-                            {p.side}
+                            background:p.option_type==="call"?"var(--call-dim)":"var(--put-dim)",
+                            color:p.option_type==="call"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>
+                            {p.option_type}
                           </span>
                         </td>
                         <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>{p.strike>=1000?p.strike.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}):p.strike.toFixed(4)}</td>
-                        <td style={{padding:"10px",fontSize:11,textAlign:"right",color:expired?"var(--put)":"var(--text-mid)"}}>{expired?"Expired":p.expiryLabel}</td>
+                        <td style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>{p.expiry_days}D</td>
                         <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>{p.contracts}</td>
                         <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>{p.collateral>0?`$${fmtN(p.collateral,2)}`:"—"}</td>
                         <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>
-                          {p.positionType==="short"?"+":""}${fmtN(p.premium,2)}
+                          {p.position_type==="short"?"+":""}${fmtN(p.entry_premium*p.contracts,2)}
                         </td>
                         <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>${fmtN(p.currentPremium,2)}</td>
                         <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",fontWeight:600,color:p.pnl>=0?"var(--call)":"var(--put)"}}>
@@ -338,15 +330,15 @@ export default function PortfolioPage() {
                         </td>
                         <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>{(sign*p.liveDelta*p.contracts).toFixed(3)}</td>
                         <td style={{padding:"6px 10px",textAlign:"right",whiteSpace:"nowrap"}}>
-                          <button onClick={()=>setRollTargetId(rollTargetId===p.id?null:p.id)} style={{
+                          <button onClick={()=>setRollTargetId(rollTargetId===p.id?null:p.id)} disabled={notSignedIn} style={{
                             fontSize:10,color:rollTargetId===p.id?"var(--brand)":"var(--text-lo)",background:"none",
-                            border:"1px solid var(--border-default)",padding:"2px 8px",cursor:"pointer",marginRight:6}}>
+                            border:"1px solid var(--border-default)",padding:"2px 8px",cursor:notSignedIn?"default":"pointer",marginRight:6,opacity:notSignedIn?0.5:1}}>
                             Roll
                           </button>
-                          <button onClick={()=>handleClose(p)} style={{
+                          <button onClick={()=>handleClose(p)} disabled={notSignedIn} style={{
                             fontSize:10,color:"var(--text-lo)",background:"none",border:"1px solid var(--border-default)",
-                            padding:"2px 8px",cursor:"pointer"}}>
-                            {p.positionType==="short"?"Buy to close":"Sell to close"}
+                            padding:"2px 8px",cursor:notSignedIn?"default":"pointer",opacity:notSignedIn?0.5:1}}>
+                            {p.position_type==="short"?"Buy to close":"Sell to close"}
                           </button>
                         </td>
                       </tr>,
@@ -405,10 +397,10 @@ export default function PortfolioPage() {
                                 <button onClick={()=>setRollTargetId(null)} style={{
                                   fontSize:11,color:"var(--text-lo)",background:"none",
                                   border:"1px solid var(--border-default)",padding:"5px 12px",cursor:"pointer"}}>Cancel</button>
-                                <button onClick={executeRoll} disabled={!!rollInsufficientFunds} style={{
+                                <button onClick={executeRoll} disabled={!!rollInsufficientFunds||rolling} style={{
                                   fontSize:11,color:"var(--bg)",background:"var(--brand)",border:"none",
-                                  padding:"5px 12px",cursor:rollInsufficientFunds?"default":"pointer",
-                                  opacity:rollInsufficientFunds?0.5:1}}>Confirm Roll</button>
+                                  padding:"5px 12px",cursor:rollInsufficientFunds||rolling?"default":"pointer",
+                                  opacity:rollInsufficientFunds||rolling?0.5:1}}>{rolling?"Rolling…":"Confirm Roll"}</button>
                               </div>
                             </div>
                           </td>
