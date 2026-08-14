@@ -8,6 +8,8 @@ import { VolSmile } from "../../components/VolSmile";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
 import { MARKETS, EXPIRIES, bs, smileVol, seededRandom, fmtN, fmtSpot, fmtK, type Greeks } from "../../lib/pricing";
+import { getChain, getSpot } from "../../lib/api/market";
+import type { SpotResponse } from "../../lib/api/types";
 import { usePositionsStore, aggregateGreeks } from "../../lib/store/positions";
 import { useAccountStore } from "../../lib/store/account";
 import { collateralRequired } from "../../lib/collateral";
@@ -40,7 +42,11 @@ function OptionsPageContent() {
   const params = useSearchParams();
   const [sym, setSym] = useState(params.get("u")??"XLM");
   const [expiry, setExpiry] = useState(EXPIRIES[2]);
-  const [spot, setSpot] = useState(MARKETS.find(m=>m.sym===sym)!.price);
+  // Seeded from the same static constants the backend starts with, then
+  // replaced by live data on the first successful poll — this is just
+  // what renders before that first response lands (and what's used if
+  // the backend is unreachable).
+  const [spotData, setSpotData] = useState<SpotResponse|null>(null);
   const [trade, setTrade] = useState<TradeState|null>(null);
   const [showTradeConfirm, setShowTradeConfirm] = useState(false);
   const positions = usePositionsStore(s=>s.positions);
@@ -52,6 +58,9 @@ function OptionsPageContent() {
   const balance = useAccountStore(s=>s.balance);
   const favorites = useWatchlistStore(s=>s.favorites);
   const hydrated = useHydrated();
+  const market = MARKETS.find(m=>m.sym===sym)??MARKETS[0];
+  const spot = spotData?.prices[sym] ?? market.price;
+  const vol = spotData?.vols[sym] ?? market.vol;
   const priceHistory = usePriceHistory(sym, spot);
   const [contracts, setContracts] = useState("1");
   const [viewTab, setViewTab] = useState<"chain"|"positions"|"strategies"|"surface">("chain");
@@ -59,15 +68,26 @@ function OptionsPageContent() {
   const [showStrategyConfirm, setShowStrategyConfirm] = useState(false);
   const prevSpotRef = useRef(spot);
 
-  const market = MARKETS.find(m=>m.sym===sym)??MARKETS[0];
   const t = expiry.days/365;
 
+  // Polls the backend's shared spot/vol simulator rather than running an
+  // independent random walk client-side — every tab (and every other
+  // client) now sees the same numbers instead of each running its own
+  // decoupled fake market.
   useEffect(()=>{
-    setSpot(market.price);
-    const id=setInterval(()=>{
-      setSpot(p=>{prevSpotRef.current=p;return p+(Math.random()-0.5)*0.001*market.price;});
-    },1800);
-    return ()=>clearInterval(id);
+    let cancelled=false;
+    const poll=()=>{
+      getSpot().then(data=>{
+        if(cancelled)return;
+        setSpotData(prev=>{
+          prevSpotRef.current=prev?.prices[sym] ?? market.price;
+          return data;
+        });
+      }).catch(()=>{/* keep showing the last known (or seed) values */});
+    };
+    poll();
+    const id=setInterval(poll,2000);
+    return ()=>{cancelled=true;clearInterval(id);};
   },[sym,market.price]);
 
   const sortedMarkets=useMemo(()=>{
@@ -78,15 +98,52 @@ function OptionsPageContent() {
     });
   },[favorites,hydrated]);
 
-  const chain=useMemo(():ChainRow[]=>{
-    return Array.from({length:21},(_,i)=>{
-      const n=i-10;
-      const strike=Math.round(spot*(1+n*0.04)*10000)/10000;
-      const vol=smileVol(market.vol,strike/spot);
-      return{strike,call:bs(spot,strike,vol,t,true),put:bs(spot,strike,vol,t,false),
-        itmCall:spot>strike,itmPut:spot<strike};
-    });
-  },[spot,market.vol,t]);
+  const [chain,setChain]=useState<ChainRow[]>([]);
+  const [chainLoading,setChainLoading]=useState(true);
+
+  useEffect(()=>{
+    let cancelled=false;
+    setChainLoading(true);
+    getChain(sym,expiry.days).then(entries=>{
+      if(cancelled)return;
+      setChain(entries.map(e=>({
+        strike:e.strike,
+        call:{premium:e.call.premium,delta:e.call.delta,gamma:e.call.gamma,theta:e.call.theta,vega:e.call.vega,iv:e.call.iv},
+        put:{premium:e.put.premium,delta:e.put.delta,gamma:e.put.gamma,theta:e.put.theta,vega:e.put.vega,iv:e.put.iv},
+        itmCall:e.is_itm_call,itmPut:e.is_itm_put,
+      })));
+    }).catch(()=>{
+      // Backend unreachable — fall back to the local Black-Scholes calc
+      // so the chain still renders something usable.
+      if(cancelled)return;
+      setChain(Array.from({length:21},(_,i)=>{
+        const n=i-10;
+        const strike=Math.round(spot*(1+n*0.04)*10000)/10000;
+        const v=smileVol(vol,strike/spot);
+        return{strike,call:bs(spot,strike,v,t,true),put:bs(spot,strike,v,t,false),
+          itmCall:spot>strike,itmPut:spot<strike};
+      }));
+    }).finally(()=>{if(!cancelled)setChainLoading(false);});
+    return ()=>{cancelled=true;};
+    // Deliberately not re-fetching on every spot tick (every 2s) — the
+    // chain refreshes on its own 4s interval below instead, so premiums
+    // update visibly without refetching/re-rendering 21 rows twice a second.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[sym,expiry.days]);
+
+  useEffect(()=>{
+    const id=setInterval(()=>{
+      getChain(sym,expiry.days).then(entries=>{
+        setChain(entries.map(e=>({
+          strike:e.strike,
+          call:{premium:e.call.premium,delta:e.call.delta,gamma:e.call.gamma,theta:e.call.theta,vega:e.call.vega,iv:e.call.iv},
+          put:{premium:e.put.premium,delta:e.put.delta,gamma:e.put.gamma,theta:e.put.theta,vega:e.put.vega,iv:e.put.iv},
+          itmCall:e.is_itm_call,itmPut:e.is_itm_put,
+        })));
+      }).catch(()=>{/* keep showing the last known chain */});
+    },4000);
+    return ()=>clearInterval(id);
+  },[sym,expiry.days]);
 
   const atmIdx=chain.findIndex(r=>!r.itmCall);
   const tradeGreeks=trade?(trade.side==="call"?trade.row.call:trade.row.put):null;
@@ -95,12 +152,18 @@ function OptionsPageContent() {
 
   const qty=Math.max(0.01,parseFloat(contracts)||1);
 
+  // Strategy leg pricing still uses the local bs()/smileVol() calc (with
+  // the static seed vol, not the live-polled one) rather than a backend
+  // round trip per leg — out of scope for this pass, which only moved
+  // the chain table and spot ticker over. Premiums here won't always
+  // match a leg's corresponding chain row exactly once vol has drifted
+  // from its seed value.
   const pricedLegs=useMemo(():PricedLeg[]=>{
     if(!selectedStrategy)return[];
     return selectedStrategy.legs.map(leg=>{
       const strike=Math.round(spot*leg.strikeOffset*10000)/10000;
-      const vol=smileVol(market.vol,leg.strikeOffset);
-      const greeks=bs(spot,strike,vol,t,leg.side==="call");
+      const legVol=smileVol(market.vol,leg.strikeOffset);
+      const greeks=bs(spot,strike,legVol,t,leg.side==="call");
       return{side:leg.side,action:leg.action,strike,contracts:qty,greeks};
     });
   },[selectedStrategy,spot,market.vol,t,qty]);
@@ -202,7 +265,7 @@ function OptionsPageContent() {
           <span className="num" style={{fontSize:12,color:priceDir?"var(--call)":"var(--put)"}}>
             {priceDir?"+":"\u2212"}{Math.abs((spot/market.price-1)*100).toFixed(2)}%
           </span>
-          <span style={{fontSize:11,color:"var(--text-lo)"}}>IV {Math.round(market.vol*100)}%</span>
+          <span style={{fontSize:11,color:"var(--text-lo)"}}>IV {Math.round(vol*100)}%</span>
         </div>
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
           {EXPIRIES.map(e=>(
@@ -227,13 +290,13 @@ function OptionsPageContent() {
 
           <SpotPriceChart history={priceHistory} width={212} height={70}/>
 
-          <VolSmile baseVol={market.vol} width={212} height={110}/>
+          <VolSmile baseVol={vol} width={212} height={110}/>
 
           <AlertsPanel sym={sym} spot={spot}/>
 
           <div>
             <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--text-lo)",marginBottom:8}}>Market</div>
-            {[["Spot",fmtSpot(spot)],["ATM IV",`${Math.round(market.vol*100)}%`],
+            {[["Spot",fmtSpot(spot)],["ATM IV",`${Math.round(vol*100)}%`],
               ["25Δ Skew","-4.2%"],["OI Calls","$284K"],["OI Puts","$198K"],["P/C Ratio","0.70"]
             ].map(([k,v])=>(
               <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",
@@ -300,6 +363,11 @@ function OptionsPageContent() {
 
           {viewTab==="chain"&&(
             <div style={{flex:1,overflowY:"auto"}}>
+              {chainLoading&&chain.length===0?(
+                <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",fontSize:12,color:"var(--text-lo)"}}>
+                  Loading chain…
+                </div>
+              ):(<>
               {/* Headers */}
               <div className="chain-header">
                 {["Vol","OI","Bid","Ask","IV"].map(h=><div key={"c"+h} className="ch call">{h}</div>)}
@@ -341,6 +409,7 @@ function OptionsPageContent() {
                   </div>
                 );
               })}
+              </>)}
             </div>
           )}
 
@@ -453,7 +522,7 @@ function OptionsPageContent() {
 
           {viewTab==="surface"&&(
             <div style={{flex:1,overflowY:"auto",padding:16}}>
-              <VolSurfaceHeatmap baseVol={market.vol} selectedExpiryDays={expiry.days}/>
+              <VolSurfaceHeatmap baseVol={vol} selectedExpiryDays={expiry.days}/>
             </div>
           )}
 
