@@ -1,33 +1,26 @@
 "use client";
 
-import { useMemo } from "react";
 import Link from "next/link";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
-import { useHistoryStore } from "../../lib/store/history";
+import { useBackendHistory } from "../../lib/hooks/useBackendHistory";
+import { useWalletStore } from "../../lib/store/wallet";
+import { useHydrated } from "../../lib/useHydrated";
 import { fmtN, fmtK } from "../../lib/pricing";
 import { toCsv, downloadCsv } from "../../lib/csv";
 import { ExportButton } from "../../components/ExportButton";
 
-function fmtDate(ts: number) {
-  return new Date(ts).toLocaleString("en-US", {
+function fmtDate(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-US", {
     month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
   });
 }
 
 export default function HistoryPage() {
-  const records = useHistoryStore(s => s.records);
-
-  const stats = useMemo(() => {
-    const closed = records.filter(r => r.realizedPnl !== undefined);
-    const totalPnl = closed.reduce((s, r) => s + (r.realizedPnl ?? 0), 0);
-    const wins = closed.filter(r => (r.realizedPnl ?? 0) > 0).length;
-    return {
-      closedCount: closed.length,
-      totalPnl,
-      winRate: closed.length > 0 ? (wins / closed.length) * 100 : 0,
-    };
-  }, [records]);
+  const hydrated = useHydrated();
+  const token = useWalletStore(s => s.token);
+  const { trades, stats } = useBackendHistory(hydrated ? token : null);
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100vh",background:"var(--bg)",overflow:"hidden",fontFamily:"var(--font-sans)"}}>
@@ -43,34 +36,36 @@ export default function HistoryPage() {
             <div>
               <h1 style={{fontFamily:"var(--font-serif)",fontSize:26,fontWeight:600,marginBottom:4}}>Trade History</h1>
               <p style={{fontSize:13,color:"var(--text-mid)",marginBottom:28}}>
-                {records.length} record{records.length===1?"":"s"}
+                {!token ? "Connect your wallet to see your trade history." : `${trades.length} closed trade${trades.length===1?"":"s"}`}
               </p>
             </div>
-            {records.length>0 && (
+            {trades.length>0 && (
               <ExportButton onClick={()=>downloadCsv(
                 `zenith-history-${new Date().toISOString().slice(0,10)}.csv`,
-                toCsv(records,[
-                  {header:"Date",value:r=>new Date(r.timestamp).toISOString()},
-                  {header:"Asset",value:r=>r.sym},
-                  {header:"Type",value:r=>r.positionType},
-                  {header:"Side",value:r=>r.side},
-                  {header:"Action",value:r=>r.action},
+                toCsv(trades,[
+                  {header:"Opened",value:r=>r.opened_at},
+                  {header:"Closed",value:r=>r.closed_at??""},
+                  {header:"Asset",value:r=>r.underlying},
+                  {header:"Type",value:r=>r.position_type},
+                  {header:"Side",value:r=>r.option_type},
+                  {header:"Status",value:r=>r.status},
                   {header:"Strike",value:r=>r.strike},
-                  {header:"Expiry",value:r=>r.expiryLabel},
+                  {header:"Expiry Days",value:r=>r.expiry_days},
                   {header:"Qty",value:r=>r.contracts},
-                  {header:"Premium",value:r=>r.premium},
-                  {header:"Realized P&L",value:r=>r.realizedPnl??""},
+                  {header:"Entry Premium",value:r=>r.entry_premium},
+                  {header:"Close Premium",value:r=>r.close_premium??""},
+                  {header:"Realized P&L",value:r=>r.realized_pnl??""},
                 ])
               )}/>
             )}
           </div>
 
-          {stats.closedCount>0 && (
+          {stats.trade_count>0 && (
             <div style={{display:"flex",gap:0,marginBottom:24,border:"1px solid var(--border-default)",background:"var(--bg-raised)"}}>
               {[
-                {label:"Closed Trades", value:String(stats.closedCount), color:"var(--text-hi)"},
-                {label:"Total Realized P&L", value:`${stats.totalPnl>=0?"+":"−"}$${fmtN(Math.abs(stats.totalPnl),2)}`, color:stats.totalPnl>=0?"var(--call)":"var(--put)"},
-                {label:"Win Rate", value:`${stats.winRate.toFixed(0)}%`, color:"var(--atm)"},
+                {label:"Closed Trades", value:String(stats.trade_count), color:"var(--text-hi)"},
+                {label:"Total Realized P&L", value:`${stats.total_realized_pnl>=0?"+":"−"}$${fmtN(Math.abs(stats.total_realized_pnl),2)}`, color:stats.total_realized_pnl>=0?"var(--call)":"var(--put)"},
+                {label:"Win Rate", value:`${stats.trade_count>0?((stats.win_count/stats.trade_count)*100).toFixed(0):"0"}%`, color:"var(--atm)"},
               ].map((s,i)=>(
                 <div key={s.label} style={{flex:1,padding:"14px 18px",borderRight:i<2?"1px solid var(--border-default)":"none"}}>
                   <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)",marginBottom:6}}>{s.label}</div>
@@ -80,7 +75,7 @@ export default function HistoryPage() {
             </div>
           )}
 
-          {records.length===0 ? (
+          {trades.length===0 ? (
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
               padding:"80px 0",border:"1px solid var(--border-subtle)",background:"var(--bg-raised)",gap:12}}>
               <div style={{fontSize:14,color:"var(--text-mid)"}}>No trades yet</div>
@@ -90,42 +85,45 @@ export default function HistoryPage() {
             </div>
           ) : (
             <div style={{border:"1px solid var(--border-default)",background:"var(--bg-raised)",overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",minWidth:820}}>
+              <table style={{width:"100%",borderCollapse:"collapse",minWidth:900}}>
                 <thead>
                   <tr style={{borderBottom:"1px solid var(--border-default)"}}>
-                    {["Date","Asset","Type","Side","Action","Strike","Expiry","Qty","Premium","Realized P&L"].map(h=>(
+                    {["Closed","Asset","Type","Side","Status","Strike","Expiry","Qty","Entry","Close","Realized P&L"].map(h=>(
                       <th key={h} style={{padding:"8px 10px",fontSize:10,fontWeight:500,textTransform:"uppercase",
                         letterSpacing:"0.05em",color:"var(--text-lo)",textAlign:"right",background:"var(--bg-overlay)"}}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {records.map(r=>(
+                  {trades.map(r=>(
                     <tr key={r.id} style={{borderBottom:"1px solid var(--border-subtle)"}}>
-                      <td style={{padding:"8px 10px",fontSize:11,color:"var(--text-mid)"}}>{fmtDate(r.timestamp)}</td>
-                      <td style={{padding:"8px 10px",fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{r.sym}</td>
+                      <td style={{padding:"8px 10px",fontSize:11,color:"var(--text-mid)"}}>{fmtDate(r.closed_at)}</td>
+                      <td style={{padding:"8px 10px",fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{r.underlying}</td>
                       <td style={{padding:"8px 10px"}}>
                         <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",
-                          background:r.positionType==="short"?"var(--put-dim)":"var(--call-dim)",
-                          color:r.positionType==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
-                          {r.positionType}
+                          background:r.position_type==="short"?"var(--put-dim)":"var(--call-dim)",
+                          color:r.position_type==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
+                          {r.position_type}
                         </span>
                       </td>
                       <td style={{padding:"8px 10px"}}>
                         <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",
-                          background:r.side==="call"?"var(--call-dim)":"var(--put-dim)",
-                          color:r.side==="call"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>
-                          {r.side}
+                          background:r.option_type==="call"?"var(--call-dim)":"var(--put-dim)",
+                          color:r.option_type==="call"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>
+                          {r.option_type}
                         </span>
                       </td>
-                      <td style={{padding:"8px 10px",fontSize:11,textAlign:"right",color:"var(--text-mid)",textTransform:"capitalize"}}>{r.action}</td>
+                      <td style={{padding:"8px 10px",fontSize:11,textAlign:"right",color:"var(--text-mid)",textTransform:"capitalize"}}>{r.status}</td>
                       <td className="num" style={{padding:"8px 10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>{fmtK(r.strike)}</td>
-                      <td style={{padding:"8px 10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>{r.expiryLabel}</td>
+                      <td style={{padding:"8px 10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>{r.expiry_days}D</td>
                       <td className="num" style={{padding:"8px 10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>{r.contracts}</td>
-                      <td className="num" style={{padding:"8px 10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>${fmtN(r.premium,2)}</td>
+                      <td className="num" style={{padding:"8px 10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>${fmtN(r.entry_premium*r.contracts,2)}</td>
+                      <td className="num" style={{padding:"8px 10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>
+                        {r.close_premium===null?"—":`$${fmtN(r.close_premium*r.contracts,2)}`}
+                      </td>
                       <td className="num" style={{padding:"8px 10px",fontSize:11,textAlign:"right",fontWeight:600,
-                        color:r.realizedPnl===undefined?"var(--text-lo)":r.realizedPnl>=0?"var(--call)":"var(--put)"}}>
-                        {r.realizedPnl===undefined?"—":`${r.realizedPnl>=0?"+":"−"}$${fmtN(Math.abs(r.realizedPnl),2)}`}
+                        color:r.realized_pnl===null?"var(--text-lo)":r.realized_pnl>=0?"var(--call)":"var(--put)"}}>
+                        {r.realized_pnl===null?"—":`${r.realized_pnl>=0?"+":"−"}$${fmtN(Math.abs(r.realized_pnl),2)}`}
                       </td>
                     </tr>
                   ))}
