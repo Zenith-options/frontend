@@ -5,14 +5,14 @@ import Link from "next/link";
 import { PayoffDiagram } from "../components/PayoffDiagram";
 import { Logo } from "../components/Logo";
 import { bs, smileVol, fmtN, fmtK, MARKETS } from "../lib/pricing";
-import { useWatchlistStore } from "../lib/store/watchlist";
+import { useBackendData } from "../lib/context/BackendDataContext";
 
 const XLMPRICE=0.1182, XLMVOL=0.82, T=30/365;
 
 export default function Home() {
   const [spot,setSpot]=useState(XLMPRICE);
-  const favorites=useWatchlistStore(s=>s.favorites);
-  const favMarkets=MARKETS.filter(m=>favorites.includes(m.sym));
+  const { watchlist } = useBackendData();
+  const favMarkets=MARKETS.filter(m=>watchlist.some(w=>w.underlying===m.sym));
 
   useEffect(()=>{
     const id=setInterval(()=>setSpot(p=>Math.max(0.05,p+(Math.random()-0.5)*0.0004)),2000);
