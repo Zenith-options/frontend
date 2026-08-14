@@ -3,6 +3,8 @@
 import { createContext, useContext } from "react";
 import { useBackendAccount } from "../hooks/useBackendAccount";
 import { useBackendPositions } from "../hooks/useBackendPositions";
+import { useBackendWatchlist } from "../hooks/useBackendWatchlist";
+import { useBackendAlerts } from "../hooks/useBackendAlerts";
 import { useWalletStore } from "../store/wallet";
 import { useHydrated } from "../useHydrated";
 import type { Account } from "../api/types";
@@ -19,19 +21,27 @@ interface BackendData {
   openStrategy: ReturnType<typeof useBackendPositions>["openStrategy"];
   close: ReturnType<typeof useBackendPositions>["close"];
   roll: ReturnType<typeof useBackendPositions>["roll"];
+  watchlist: ReturnType<typeof useBackendWatchlist>["items"];
+  watchlistLoading: boolean;
+  addToWatchlist: ReturnType<typeof useBackendWatchlist>["add"];
+  removeFromWatchlist: ReturnType<typeof useBackendWatchlist>["remove"];
+  alerts: ReturnType<typeof useBackendAlerts>["alerts"];
+  alertsLoading: boolean;
+  addAlert: ReturnType<typeof useBackendAlerts>["add"];
+  removeAlert: ReturnType<typeof useBackendAlerts>["remove"];
 }
 
 const BackendDataContext = createContext<BackendData | null>(null);
 
 /**
- * Single shared instance of the account/positions hooks, mounted once at
- * the root — every consumer (AppHeader's balance chip, the options page,
- * eventually the portfolio page) reads the same state instead of each
- * running its own independent fetch. That matters specifically because
- * each hook's mutation methods (open/close/roll) only refresh *their own*
- * instance's data; without a shared instance, AppHeader's balance would
- * go stale after a trade made through a different component's copy of
- * the hook until the next full remount.
+ * Single shared instance of the account/positions/watchlist/alerts hooks,
+ * mounted once at the root — every consumer (AppHeader's balance chip,
+ * StarButton, AlertsPanel, the options and portfolio pages) reads the
+ * same state instead of each running its own independent fetch. That
+ * matters specifically because each hook's mutation methods only refresh
+ * *their own* instance's data; without a shared instance, e.g.
+ * AppHeader's balance would go stale after a trade made through a
+ * different component's copy of the hook until the next full remount.
  */
 export function BackendDataProvider({ children }: { children: React.ReactNode }) {
   const hydrated = useHydrated();
@@ -47,6 +57,11 @@ export function BackendDataProvider({ children }: { children: React.ReactNode })
     positions, greeks, loading: positionsLoading, refresh: refreshPositions,
     open, openStrategy, close, roll,
   } = useBackendPositions(effectiveToken);
+  const {
+    items: watchlist, loading: watchlistLoading,
+    add: addToWatchlist, remove: removeFromWatchlist,
+  } = useBackendWatchlist(effectiveToken);
+  const { alerts, loading: alertsLoading, add: addAlert, remove: removeAlert } = useBackendAlerts(effectiveToken);
 
   // Every position mutation changes the account balance/collateral too —
   // refresh it here rather than trusting every call site to remember to.
@@ -78,6 +93,8 @@ export function BackendDataProvider({ children }: { children: React.ReactNode })
         positions, greeks, positionsLoading, refreshPositions,
         open: openAndRefreshAccount, openStrategy: openStrategyAndRefreshAccount,
         close: closeAndRefreshAccount, roll: rollAndRefreshAccount,
+        watchlist, watchlistLoading, addToWatchlist, removeFromWatchlist,
+        alerts, alertsLoading, addAlert, removeAlert,
       }}
     >
       {children}
