@@ -8,7 +8,7 @@ import { VolSmile } from "../../components/VolSmile";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
 import { MARKETS, EXPIRIES, bs, smileVol, seededRandom, fmtN, fmtSpot, fmtK, type Greeks } from "../../lib/pricing";
-import { getChain, getSpot } from "../../lib/api/market";
+import { getChain, getExpiryCalendar, getSpot } from "../../lib/api/market";
 import type { SpotResponse } from "../../lib/api/types";
 import { usePositionsStore, aggregateGreeks } from "../../lib/store/positions";
 import { useAccountStore } from "../../lib/store/account";
@@ -89,6 +89,20 @@ function OptionsPageContent() {
     const id=setInterval(poll,2000);
     return ()=>{cancelled=true;clearInterval(id);};
   },[sym,market.price]);
+
+  // Backend's expiry list happens to be the same across every underlying
+  // (it's not derived from anything symbol-specific yet), but fetching
+  // per-symbol anyway keeps this correct if that ever changes, and
+  // matches how spot/chain are already fetched per-symbol.
+  const [expiries,setExpiries]=useState(EXPIRIES);
+  useEffect(()=>{
+    let cancelled=false;
+    getExpiryCalendar(sym).then(cal=>{
+      if(cancelled)return;
+      setExpiries(cal.expiries.map(e=>({label:e.label,days:e.days_to_expiry})));
+    }).catch(()=>{/* keep showing the local EXPIRIES fallback */});
+    return ()=>{cancelled=true;};
+  },[sym]);
 
   const sortedMarkets=useMemo(()=>{
     if(!hydrated)return MARKETS; // matches SSR order until this component's own mount effect fires
@@ -268,7 +282,7 @@ function OptionsPageContent() {
           <span style={{fontSize:11,color:"var(--text-lo)"}}>IV {Math.round(vol*100)}%</span>
         </div>
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
-          {EXPIRIES.map(e=>(
+          {expiries.map(e=>(
             <button key={e.label} onClick={()=>setExpiry(e)} style={{
               padding:"3px 7px",border:"none",borderRadius:0,cursor:"pointer",fontSize:11,
               background:expiry.label===e.label?"var(--atm-dim)":"transparent",
