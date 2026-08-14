@@ -18,7 +18,6 @@ import { AlertsPanel } from "../../components/AlertsPanel";
 import { StarButton } from "../../components/StarButton";
 import { SpotPriceChart } from "../../components/SpotPriceChart";
 import { usePriceHistory } from "../../lib/usePriceHistory";
-import { useWatchlistStore } from "../../lib/store/watchlist";
 import { useHydrated } from "../../lib/useHydrated";
 import { StrategyPicker } from "../../components/StrategyPicker";
 import { MultiLegPayoffDiagram } from "../../components/MultiLegPayoffDiagram";
@@ -51,11 +50,11 @@ function OptionsPageContent() {
   const [showTradeConfirm, setShowTradeConfirm] = useState(false);
   const [tradeError, setTradeError] = useState<string|null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const favorites = useWatchlistStore(s=>s.favorites);
   const hydrated = useHydrated();
   const token = useWalletStore(s=>s.token);
-  const {account,positions:backendPositions,greeks:portGreeks,
+  const {account,positions:backendPositions,greeks:portGreeks,watchlist,
     open:openBackendPosition,openStrategy:openBackendStrategy} = useBackendData();
+  const favorites = useMemo(()=>watchlist.map(w=>w.underlying),[watchlist]);
   const balance = account?.balance ?? 0;
   const market = MARKETS.find(m=>m.sym===sym)??MARKETS[0];
   const spot = spotData?.prices[sym] ?? market.price;
