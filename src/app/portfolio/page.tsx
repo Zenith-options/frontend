@@ -13,6 +13,7 @@ import { MARKETS, EXPIRIES, bs, smileVol, fmtN, fmtK } from "../../lib/pricing";
 import { collateralRequired } from "../../lib/collateral";
 import { toCsv, downloadCsv } from "../../lib/csv";
 import { ExportButton } from "../../components/ExportButton";
+import { PortfolioRiskPanel } from "../../components/PortfolioRiskPanel";
 
 interface Marked extends Position {
   spot: number;
@@ -227,6 +228,8 @@ export default function PortfolioPage() {
               {actionError}
             </div>
           )}
+
+          {backendPositions.length>0 && <PortfolioRiskPanel positions={backendPositions} spots={spots} />}
 
           {strategyGroups.length>0 && (
             <div style={{marginBottom:24,display:"flex",flexDirection:"column",gap:8}}>

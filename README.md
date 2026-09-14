@@ -55,7 +55,7 @@ npm run lint     # next lint
 |---|---|
 | `/` | Marketing/landing page, live preview chain, watchlist |
 | `/options` | The terminal: chain, positions, strategy builder, vol surface |
-| `/portfolio` | Open positions marked-to-market, roll, close, CSV export |
+| `/portfolio` | Open positions marked-to-market, roll, close, CSV export, portfolio-wide risk panel |
 | `/history` | Full trade ledger (opens + closes) with realized P&L stats |
 
 The `/options` page is tabbed:
@@ -97,6 +97,9 @@ src/
     ├── pricing.ts        # Black-Scholes, vol smile — fallback/preview layer, see above
     ├── collateral.ts     # Collateral requirements (100% calls, 110% puts)
     ├── payoff.ts          # Multi-leg combined payoff math (local; backend equivalent unused)
+    ├── risk.ts             # Whole-portfolio risk: groups all open positions per
+    │                       # underlying into one payoff curve, stress-tests the
+    │                       # account across a spot-shock grid
     ├── volSurface.ts      # Term-structure-aware IV surface grid
     ├── strategies.ts      # Multi-leg strategy templates
     ├── csv.ts / notify.ts # CSV export, browser Notification wrapper
