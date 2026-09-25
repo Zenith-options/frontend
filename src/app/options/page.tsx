@@ -25,6 +25,7 @@ import { VolSurfaceHeatmap } from "../../components/VolSurfaceHeatmap";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { type StrategyTemplate } from "../../lib/strategies";
 import { netPremium, type PricedLeg } from "../../lib/payoff";
+import { ProvenanceBadge, useSpotProvenance } from "../../components/FeedStatus";
 import { toast } from "../../lib/toast";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
@@ -47,6 +48,7 @@ function OptionsPageContent() {
   // still reconnecting, in which case the static seed constants below
   // are what render instead.
   const { data: spotData } = useSpotFeedContext();
+  const prov = useSpotProvenance();
   const [trade, setTrade] = useState<TradeState|null>(null);
   const [showTradeConfirm, setShowTradeConfirm] = useState(false);
   const [tradeError, setTradeError] = useState<string|null>(null);
@@ -101,12 +103,17 @@ function OptionsPageContent() {
 
   const [chain,setChain]=useState<ChainRow[]>([]);
   const [chainLoading,setChainLoading]=useState(true);
+  // True while the chain shown is the local Black-Scholes fallback, not backend data.
+  const [chainFallback,setChainFallback]=useState(false);
+  const priceDegraded=prov.degraded||chainFallback;
+  const priceSource=chainFallback?"fallback-model" as const:prov.source;
 
   useEffect(()=>{
     let cancelled=false;
     setChainLoading(true);
     getChain(sym,expiry.days).then(entries=>{
       if(cancelled)return;
+      setChainFallback(false);
       setChain(entries.map(e=>({
         strike:e.strike,
         call:{premium:e.call.premium,delta:e.call.delta,gamma:e.call.gamma,theta:e.call.theta,vega:e.call.vega,iv:e.call.iv},
@@ -118,6 +125,7 @@ function OptionsPageContent() {
       // so the chain still renders something usable.
       if(cancelled)return;
       toast.warning("Live chain unavailable — showing locally modeled prices.");
+      setChainFallback(true);
       setChain(Array.from({length:21},(_,i)=>{
         const n=i-10;
         const strike=Math.round(spot*(1+n*0.04)*10000)/10000;
@@ -136,6 +144,7 @@ function OptionsPageContent() {
   useEffect(()=>{
     const id=setInterval(()=>{
       getChain(sym,expiry.days).then(entries=>{
+        setChainFallback(false);
         setChain(entries.map(e=>({
           strike:e.strike,
           call:{premium:e.call.premium,delta:e.call.delta,gamma:e.call.gamma,theta:e.call.theta,vega:e.call.vega,iv:e.call.iv},
@@ -353,7 +362,7 @@ function OptionsPageContent() {
               }}>{tab}{tab==="positions"&&hydrated&&backendPositions.length>0?` (${backendPositions.length})`:""}</button>
             ))}
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",paddingRight:4}}>
-              <span style={{fontSize:10,color:"var(--text-lo)"}}>{sym}-USD · {expiry.label} · {chain.length} strikes · Click ask to buy, bid to write</span>
+              <ProvenanceBadge source={priceSource} asOf={prov.asOf}/> <span style={{fontSize:10,color:"var(--text-lo)"}}>{sym}-USD · {expiry.label} · {chain.length} strikes · Click ask to buy, bid to write</span>
             </div>
           </div>
 
@@ -502,7 +511,7 @@ function OptionsPageContent() {
                   <div style={{marginTop:16}}>
                     <MultiLegPayoffDiagram legs={pricedLegs} spot={spot} width={420} height={220}/>
                   </div>
-                  <button onClick={()=>{setTradeError(null);setShowStrategyConfirm(true);}} disabled={strategyInsufficientFunds||notSignedIn} style={{marginTop:12,padding:"10px 20px",
+                  <button onClick={()=>{setTradeError(null);setShowStrategyConfirm(true);}} disabled={strategyInsufficientFunds||notSignedIn||priceDegraded} title={priceDegraded?"Trading disabled: prices are not live":undefined} style={{marginTop:12,padding:"10px 20px",
                     background:"var(--brand)",color:"var(--bg)",border:"none",fontSize:13,fontWeight:700,
                     cursor:strategyInsufficientFunds||notSignedIn?"default":"pointer",opacity:strategyInsufficientFunds||notSignedIn?0.5:1}}>
                     Execute {selectedStrategy.name} ({pricedLegs.length} legs)
@@ -672,7 +681,7 @@ function OptionsPageContent() {
                   </div>
                 )}
               </div>
-              <button onClick={()=>{setTradeError(null);setShowTradeConfirm(true);}} disabled={insufficientFunds||notSignedIn} style={{width:"100%",height:44,borderRadius:0,border:"none",
+              <button onClick={()=>{setTradeError(null);setShowTradeConfirm(true);}} disabled={insufficientFunds||notSignedIn||priceDegraded} title={priceDegraded?"Trading disabled: prices are not live":undefined} style={{width:"100%",height:44,borderRadius:0,border:"none",
                 cursor:insufficientFunds||notSignedIn?"default":"pointer",fontSize:14,fontWeight:700,
                 opacity:insufficientFunds||notSignedIn?0.5:1,
                 background:trade.side==="call"?"var(--call)":"var(--put)",color:"var(--bg)"}}>
@@ -719,7 +728,7 @@ function OptionsPageContent() {
           confirmLabel={submitting?"Submitting…":`Confirm ${trade.mode==="write"?"Write":"Buy"}`}
           onConfirm={execTrade}
           onCancel={()=>setShowTradeConfirm(false)}
-          disabled={insufficientFunds||notSignedIn||submitting||!!tradeError}
+          disabled={insufficientFunds||notSignedIn||priceDegraded||submitting||!!tradeError}
           disabledReason={tradeError??(insufficientFunds?`Insufficient balance ${trade.mode==="write"?"to post collateral":"to cover premium"}.`:undefined)}
         >
           {[
@@ -743,7 +752,7 @@ function OptionsPageContent() {
           confirmLabel={submitting?"Submitting…":"Confirm Execute"}
           onConfirm={execStrategy}
           onCancel={()=>setShowStrategyConfirm(false)}
-          disabled={strategyInsufficientFunds||notSignedIn||submitting||!!tradeError}
+          disabled={strategyInsufficientFunds||notSignedIn||priceDegraded||submitting||!!tradeError}
           disabledReason={tradeError??(strategyInsufficientFunds?`Insufficient balance — needs $${fmtN(strategyRequiredFunds,2)}, have $${fmtN(balance,2)}.`:notSignedIn?"Connect your wallet to trade.":undefined)}
         >
           {pricedLegs.map((leg,i)=>(
