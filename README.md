@@ -131,8 +131,6 @@ needs the same guard.
 - Wallet sign-in (`signBlob` → verify → bearer token) hasn't been manually
   confirmed against a live Freighter extension — no extension available in
   this environment. The flow is logically complete, not hardware-tested.
-- Multi-leg strategy *preview*
-  pricing (before execution) is also local-only, not backend-priced.
 - The home page's preview chain still runs its own local random-walk spot
   simulation rather than the shared WebSocket feed — only its watchlist is
   backend-real.

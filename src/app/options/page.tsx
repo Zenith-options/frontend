@@ -24,12 +24,15 @@ import { MultiLegPayoffDiagram } from "../../components/MultiLegPayoffDiagram";
 import { VolSurfaceHeatmap } from "../../components/VolSurfaceHeatmap";
 import { ChainRow as ChainRowView } from "../../components/ChainRow";
 import { useChainFeed } from "../../lib/hooks/useChainFeed";
+import { useStrategyQuote, quoteMove } from "../../lib/hooks/useStrategyQuote";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { type StrategyTemplate } from "../../lib/strategies";
 import type { ChainRowData } from "../../lib/chainRows";
-import { netPremium, type PricedLeg } from "../../lib/payoff";
+import { type PricedLeg } from "../../lib/payoff";
 
 type ChainRow=ChainRowData;
+// Net premium moving more than this since the confirm dialog opened requires re-confirmation.
+const QUOTE_REQUIRE_RECONFIRM=0.02;
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
 
 export default function OptionsPage() {
@@ -103,7 +106,7 @@ function OptionsPageContent() {
 
   // Chain rows are stream-driven (or visibility-aware polling) — see
   // useChainFeed. The local BS chain below is only the offline fallback.
-  const {chain,loading:chainLoading}=useChainFeed(sym,expiry.days,()=>
+  const {chain,loading:chainLoading,mode:chainMode}=useChainFeed(sym,expiry.days,()=>
     Array.from({length:21},(_,i)=>{
       const n=i-10;
       const strike=Math.round(spot*(1+n*0.04)*10000)/10000;
@@ -135,13 +138,10 @@ function OptionsPageContent() {
 
   const qty=Math.max(0.01,parseFloat(contracts)||1);
 
-  // Strategy leg pricing still uses the local bs()/smileVol() calc (with
-  // the static seed vol, not the live-polled one) rather than a backend
-  // round trip per leg — out of scope for this pass, which only moved
-  // the chain table and spot ticker over. Premiums here won't always
-  // match a leg's corresponding chain row exactly once vol has drifted
-  // from its seed value.
-  const pricedLegs=useMemo(():PricedLeg[]=>{
+  // Local Black-Scholes pricing of the strategy legs (static seed vol) —
+  // only the offline fallback / initial placeholder for useStrategyQuote,
+  // which prices from the live chain snapshot or the backend /price endpoint.
+  const localLegs=useMemo(():PricedLeg[]=>{
     if(!selectedStrategy)return[];
     return selectedStrategy.legs.map(leg=>{
       const strike=Math.round(spot*leg.strikeOffset*10000)/10000;
@@ -150,8 +150,13 @@ function OptionsPageContent() {
       return{side:leg.side,action:leg.action,strike,contracts:qty,greeks};
     });
   },[selectedStrategy,spot,market.vol,t,qty]);
-
-  const strategyNetPremium=useMemo(()=>netPremium(pricedLegs),[pricedLegs]);
+  const {legs:pricedLegs,netPremium:strategyNetPremium,asOf:quoteAsOf,source:quoteSource,loading:quoteLoading}=useStrategyQuote({
+    template:selectedStrategy,sym,expiryDays:expiry.days,qty,spot,chain,chainIsLive:chainMode!=="fallback",localLegs,
+  });
+  const [quotedNet,setQuotedNet]=useState<number|null>(null);
+  const quoteMoved=showStrategyConfirm&&quotedNet!==null&&quoteMove(quotedNet,strategyNetPremium)>QUOTE_REQUIRE_RECONFIRM;
+  const quoteLabel=quoteSource==="local"?"local estimate (offline fallback)":quoteSource==="chain"?"chain":"backend";
+  const quoteTime=quoteAsOf?new Date(quoteAsOf).toLocaleTimeString([],{hour12:false}):"—";
   const strategyCollateral=useMemo(()=>pricedLegs.reduce((sum,leg)=>
     leg.action==="sell"?sum+collateralRequired(leg.side,leg.contracts,leg.strike,spot):sum,0
   ),[pricedLegs,spot]);
@@ -437,7 +442,10 @@ function OptionsPageContent() {
                   <div style={{marginTop:16}}>
                     <MultiLegPayoffDiagram legs={pricedLegs} spot={spot} width={420} height={220}/>
                   </div>
-                  <button onClick={()=>{setTradeError(null);setShowStrategyConfirm(true);}} disabled={strategyInsufficientFunds||notSignedIn} style={{marginTop:12,padding:"10px 20px",
+                  <div className="num" style={{marginTop:10,fontSize:10,color:quoteSource==="local"?"var(--put)":"var(--text-lo)"}}>
+                    Quote as of {quoteTime} · {quoteLabel}{quoteLoading?" · refreshing…":""}
+                  </div>
+                  <button onClick={()=>{setTradeError(null);setQuotedNet(strategyNetPremium);setShowStrategyConfirm(true);}} disabled={strategyInsufficientFunds||notSignedIn} style={{marginTop:12,padding:"10px 20px",
                     background:"var(--brand)",color:"var(--bg)",border:"none",fontSize:13,fontWeight:700,
                     cursor:strategyInsufficientFunds||notSignedIn?"default":"pointer",opacity:strategyInsufficientFunds||notSignedIn?0.5:1}}>
                     Execute {selectedStrategy.name} ({pricedLegs.length} legs)
@@ -675,10 +683,10 @@ function OptionsPageContent() {
       {showStrategyConfirm&&selectedStrategy&&(
         <ConfirmDialog
           title={`Execute ${selectedStrategy.name}`}
-          confirmLabel={submitting?"Submitting…":"Confirm Execute"}
-          onConfirm={execStrategy}
+          confirmLabel={submitting?"Submitting…":quoteMoved?"Accept new quote":"Confirm Execute"}
+          onConfirm={()=>{if(quoteMoved)setQuotedNet(strategyNetPremium);else execStrategy();}}
           onCancel={()=>setShowStrategyConfirm(false)}
-          disabled={strategyInsufficientFunds||notSignedIn||submitting||!!tradeError}
+          disabled={strategyInsufficientFunds||notSignedIn||submitting||!!tradeError||(quoteLoading&&!quoteMoved)}
           disabledReason={tradeError??(strategyInsufficientFunds?`Insufficient balance — needs $${fmtN(strategyRequiredFunds,2)}, have $${fmtN(balance,2)}.`:notSignedIn?"Connect your wallet to trade.":undefined)}
         >
           {pricedLegs.map((leg,i)=>(
@@ -692,6 +700,14 @@ function OptionsPageContent() {
             <span style={{color:"var(--text-lo)"}}>{strategyNetPremium>=0?"Net Debit":"Net Credit"}</span>
             <span className="num" style={{color:"var(--text-hi)"}}>${fmtN(Math.abs(strategyNetPremium),2)}</span>
           </div>
+          <div className="num" style={{padding:"4px 0",fontSize:10,color:quoteSource==="local"?"var(--put)":"var(--text-lo)"}}>
+            Quote as of {quoteTime} · {quoteLabel}
+          </div>
+          {quoteMoved&&quotedNet!==null&&(
+            <div style={{margin:"6px 0",padding:"6px 8px",fontSize:11,color:"var(--put)",border:"1px solid var(--put)"}}>
+              Quote moved: net {quotedNet>=0?"debit":"credit"} ${fmtN(Math.abs(quotedNet),2)} → {strategyNetPremium>=0?"debit":"credit"} ${fmtN(Math.abs(strategyNetPremium),2)}. Review and accept the new quote to continue.
+            </div>
+          )}
           {strategyCollateral>0&&(
             <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12}}>
               <span style={{color:"var(--text-lo)"}}>Collateral Required</span>
