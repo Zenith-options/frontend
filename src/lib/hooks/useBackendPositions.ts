@@ -10,7 +10,8 @@ import {
 } from "../api/positions";
 import { executeStrategy } from "../api/strategies";
 import { queryKeys } from "../api/queryKeys";
-import type { AggregateGreeks } from "../api/types";
+import type { AggregateGreeks, Position } from "../api/types";
+import { addPosition, applyOptimistic, placeholderPosition, removePositionById, rollback, tempId } from "../optimistic";
 
 const ZERO_GREEKS: AggregateGreeks = { delta: 0, gamma: 0, theta: 0, vega: 0 };
 const NO_TOKEN = "Connect and sign in with your wallet first";
@@ -52,22 +53,38 @@ export function useBackendPositions(token: string | null) {
     if (!token) throw new Error(NO_TOKEN);
     return token;
   };
+  const posKey = queryKeys.openPositions(token);
+  const rb = (mk: string) => (_e: unknown, _v: unknown, ctx: Awaited<ReturnType<typeof applyOptimistic<Position[]>>> | undefined) =>
+    rollback(qc, ctx, [mk]);
+  // Optimistic transforms live in ../optimistic; onSettled always
+  // reconciles with the server (and refreshes greeks/account/history).
   const openM = useMutation({
+    mutationKey: ["open"],
     mutationFn: (p: OpenPositionParams) => openPosition(p, requireToken()),
-    onSuccess: invalidateAll,
+    onMutate: (p: OpenPositionParams) =>
+      applyOptimistic<Position[]>(qc, posKey, old => addPosition(old, placeholderPosition(p, tempId())), []),
+    onError: rb("open"),
+    onSettled: invalidateAll,
   });
   const strategyM = useMutation({
     mutationFn: (legs: OpenPositionParams[]) => executeStrategy(legs, requireToken()),
     onSuccess: invalidateAll,
   });
   const closeM = useMutation({
+    mutationKey: ["close"],
     mutationFn: (id: string) => closePosition(id, requireToken()),
-    onSuccess: invalidateAll,
+    onMutate: (id: string) => applyOptimistic<Position[]>(qc, posKey, old => removePositionById(old, id), []),
+    onError: rb("close"),
+    onSettled: invalidateAll,
   });
   const rollM = useMutation({
+    mutationKey: ["roll"],
     mutationFn: (v: { id: string; newStrike: number; newExpiryDays: number }) =>
       rollPosition(v.id, { newStrike: v.newStrike, newExpiryDays: v.newExpiryDays }, requireToken()),
-    onSuccess: invalidateAll,
+    // The old leg leaves the open list immediately; the new leg appears on settle.
+    onMutate: (v: { id: string }) => applyOptimistic<Position[]>(qc, posKey, old => removePositionById(old, v.id), []),
+    onError: rb("roll"),
+    onSettled: invalidateAll,
   });
 
   const refresh = useCallback(() => {

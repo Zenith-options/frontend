@@ -2,7 +2,8 @@ import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createAlert, deleteAlert, getAlerts } from "../api/alerts";
 import { queryKeys } from "../api/queryKeys";
-import type { AlertCondition } from "../api/types";
+import type { Alert, AlertCondition } from "../api/types";
+import { addAlertItem, applyOptimistic, removeAlertById, rollback, tempId } from "../optimistic";
 
 const NO_TOKEN = "Connect and sign in with your wallet first";
 
@@ -23,19 +24,27 @@ export function useBackendAlerts(token: string | null) {
   });
   const invalidate = () => qc.invalidateQueries({ queryKey: key });
 
+  type Ctx = Awaited<ReturnType<typeof applyOptimistic<Alert[]>>>;
+  type AddVars = { underlying: string; condition: AlertCondition; targetPrice: number };
   const addM = useMutation({
-    mutationFn: (params: { underlying: string; condition: AlertCondition; targetPrice: number }) => {
+    mutationKey: ["alert-add"],
+    mutationFn: (params: AddVars) => {
       if (!token) throw new Error(NO_TOKEN);
       return createAlert(params, token);
     },
-    onSuccess: invalidate,
+    onMutate: (v: AddVars) => applyOptimistic<Alert[]>(qc, key, old => addAlertItem(old, v, tempId()), []),
+    onError: (_e: unknown, _v: AddVars, ctx: Ctx | undefined) => rollback(qc, ctx, ["alert-add"]),
+    onSettled: invalidate,
   });
   const removeM = useMutation({
+    mutationKey: ["alert-remove"],
     mutationFn: (id: string) => {
       if (!token) throw new Error(NO_TOKEN);
       return deleteAlert(id, token);
     },
-    onSuccess: invalidate,
+    onMutate: (id: string) => applyOptimistic<Alert[]>(qc, key, old => removeAlertById(old, id), []),
+    onError: (_e: unknown, _id: string, ctx: Ctx | undefined) => rollback(qc, ctx, ["alert-remove"]),
+    onSettled: invalidate,
   });
 
   const refresh = useCallback(() => {

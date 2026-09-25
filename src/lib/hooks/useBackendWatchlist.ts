@@ -2,6 +2,8 @@ import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addToWatchlist, getWatchlist, removeFromWatchlist } from "../api/watchlist";
 import { queryKeys } from "../api/queryKeys";
+import type { WatchlistItem } from "../api/types";
+import { addWatchlistItem, applyOptimistic, removeWatchlistItem, rollback } from "../optimistic";
 
 const NO_TOKEN = "Connect and sign in with your wallet first";
 
@@ -15,19 +17,26 @@ export function useBackendWatchlist(token: string | null) {
   const q = useQuery({ queryKey: key, queryFn: () => getWatchlist(token as string), enabled: !!token });
   const invalidate = () => qc.invalidateQueries({ queryKey: key });
 
+  type Ctx = Awaited<ReturnType<typeof applyOptimistic<WatchlistItem[]>>>;
   const addM = useMutation({
+    mutationKey: ["watchlist-add"],
     mutationFn: (underlying: string) => {
       if (!token) throw new Error(NO_TOKEN);
       return addToWatchlist(underlying, token);
     },
-    onSuccess: invalidate,
+    onMutate: (u: string) => applyOptimistic<WatchlistItem[]>(qc, key, old => addWatchlistItem(old, u), []),
+    onError: (_e: unknown, _u: string, ctx: Ctx | undefined) => rollback(qc, ctx, ["watchlist-add"]),
+    onSettled: invalidate,
   });
   const removeM = useMutation({
+    mutationKey: ["watchlist-remove"],
     mutationFn: (underlying: string) => {
       if (!token) throw new Error(NO_TOKEN);
       return removeFromWatchlist(underlying, token);
     },
-    onSuccess: invalidate,
+    onMutate: (u: string) => applyOptimistic<WatchlistItem[]>(qc, key, old => removeWatchlistItem(old, u), []),
+    onError: (_e: unknown, _u: string, ctx: Ctx | undefined) => rollback(qc, ctx, ["watchlist-remove"]),
+    onSettled: invalidate,
   });
 
   const refresh = useCallback(() => {
