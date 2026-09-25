@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef, Suspense } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { PayoffDiagram } from "../../components/PayoffDiagram";
@@ -8,7 +8,7 @@ import { VolSmile } from "../../components/VolSmile";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
 import { MARKETS, EXPIRIES, bs, smileVol, seededRandom, fmtN, fmtSpot, fmtK, type Greeks } from "../../lib/pricing";
-import { getChain, getExpiryCalendar } from "../../lib/api/market";
+import { getExpiryCalendar } from "../../lib/api/market";
 import { ApiError } from "../../lib/api/client";
 import { useBackendData } from "../../lib/context/BackendDataContext";
 import { useSpotFeedContext } from "../../lib/context/SpotFeedContext";
@@ -22,11 +22,14 @@ import { useHydrated } from "../../lib/useHydrated";
 import { StrategyPicker } from "../../components/StrategyPicker";
 import { MultiLegPayoffDiagram } from "../../components/MultiLegPayoffDiagram";
 import { VolSurfaceHeatmap } from "../../components/VolSurfaceHeatmap";
+import { ChainRow as ChainRowView } from "../../components/ChainRow";
+import { useChainFeed } from "../../lib/hooks/useChainFeed";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { type StrategyTemplate } from "../../lib/strategies";
+import type { ChainRowData } from "../../lib/chainRows";
 import { netPremium, type PricedLeg } from "../../lib/payoff";
 
-interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
+type ChainRow=ChainRowData;
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
 
 export default function OptionsPage() {
@@ -98,52 +101,17 @@ function OptionsPageContent() {
     });
   },[favorites,hydrated]);
 
-  const [chain,setChain]=useState<ChainRow[]>([]);
-  const [chainLoading,setChainLoading]=useState(true);
-
-  useEffect(()=>{
-    let cancelled=false;
-    setChainLoading(true);
-    getChain(sym,expiry.days).then(entries=>{
-      if(cancelled)return;
-      setChain(entries.map(e=>({
-        strike:e.strike,
-        call:{premium:e.call.premium,delta:e.call.delta,gamma:e.call.gamma,theta:e.call.theta,vega:e.call.vega,iv:e.call.iv},
-        put:{premium:e.put.premium,delta:e.put.delta,gamma:e.put.gamma,theta:e.put.theta,vega:e.put.vega,iv:e.put.iv},
-        itmCall:e.is_itm_call,itmPut:e.is_itm_put,
-      })));
-    }).catch(()=>{
-      // Backend unreachable — fall back to the local Black-Scholes calc
-      // so the chain still renders something usable.
-      if(cancelled)return;
-      setChain(Array.from({length:21},(_,i)=>{
-        const n=i-10;
-        const strike=Math.round(spot*(1+n*0.04)*10000)/10000;
-        const v=smileVol(vol,strike/spot);
-        return{strike,call:bs(spot,strike,v,t,true),put:bs(spot,strike,v,t,false),
-          itmCall:spot>strike,itmPut:spot<strike};
-      }));
-    }).finally(()=>{if(!cancelled)setChainLoading(false);});
-    return ()=>{cancelled=true;};
-    // Deliberately not re-fetching on every spot tick (every 2s) — the
-    // chain refreshes on its own 4s interval below instead, so premiums
-    // update visibly without refetching/re-rendering 21 rows twice a second.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[sym,expiry.days]);
-
-  useEffect(()=>{
-    const id=setInterval(()=>{
-      getChain(sym,expiry.days).then(entries=>{
-        setChain(entries.map(e=>({
-          strike:e.strike,
-          call:{premium:e.call.premium,delta:e.call.delta,gamma:e.call.gamma,theta:e.call.theta,vega:e.call.vega,iv:e.call.iv},
-          put:{premium:e.put.premium,delta:e.put.delta,gamma:e.put.gamma,theta:e.put.theta,vega:e.put.vega,iv:e.put.iv},
-          itmCall:e.is_itm_call,itmPut:e.is_itm_put,
-        })));
-      }).catch(()=>{/* keep showing the last known chain */});
-    },4000);
-    return ()=>clearInterval(id);
-  },[sym,expiry.days]);
+  // Chain rows are stream-driven (or visibility-aware polling) — see
+  // useChainFeed. The local BS chain below is only the offline fallback.
+  const {chain,loading:chainLoading}=useChainFeed(sym,expiry.days,()=>
+    Array.from({length:21},(_,i)=>{
+      const n=i-10;
+      const strike=Math.round(spot*(1+n*0.04)*10000)/10000;
+      const v=smileVol(vol,strike/spot);
+      return{strike,call:bs(spot,strike,v,t,true),put:bs(spot,strike,v,t,false),
+        itmCall:spot>strike,itmPut:spot<strike};
+    }));
+  const openTrade=useCallback((row:ChainRow,side:"call"|"put",mode:"buy"|"write")=>setTrade({row,side,mode}),[]);
 
   // Backend positions don't store per-position Greeks (only the entry
   // premium/spot) — GET /api/v1/portfolio/greeks gives the aggregate, but
@@ -369,40 +337,9 @@ function OptionsPageContent() {
                 {["IV","Ask","Bid","OI","Vol"].map(h=><div key={"p"+h} className="ch put">{h}</div>)}
               </div>
 
-              {chain.map((row,i)=>{
-                const isAtm=i===atmIdx;
-                const sp=Math.max(0.00001,row.call.premium*0.003);
-                const vol=Math.round(seededRandom(row.strike*1000)*200+20);
-                const oi=Math.round(seededRandom(row.strike*1000+7)*5000+100);
-                return(
-                  <div key={row.strike}
-                    className={`chain-row${row.itmCall?" itm-call":""}${row.itmPut?" itm-put":""}`}
-                    style={{background:isAtm?"var(--atm-dim)":undefined}}>
-                    <div className="cc">{vol}</div>
-                    <div className="cc">{oi.toLocaleString()}</div>
-                    <div className="cc tradeable call" title="Click to write (sell)" onClick={()=>setTrade({row,side:"call",mode:"write"})}>
-                      {fmtN(Math.max(0,row.call.premium-sp))}
-                    </div>
-                    <div className="cc tradeable call" title="Click to buy" onClick={()=>setTrade({row,side:"call",mode:"buy"})}>
-                      {fmtN(row.call.premium+sp)}
-                    </div>
-                    <div className="cc brand">{(row.call.iv*100).toFixed(1)}</div>
-                    <div className={`strike-cell${isAtm?" atm":""}`}>
-                      {fmtK(row.strike)}
-                      {isAtm&&<div style={{fontSize:7,marginTop:1,opacity:0.6}}>ATM</div>}
-                    </div>
-                    <div className="cc brand">{(row.put.iv*100).toFixed(1)}</div>
-                    <div className="cc tradeable put" title="Click to buy" onClick={()=>setTrade({row,side:"put",mode:"buy"})}>
-                      {fmtN(row.put.premium+sp)}
-                    </div>
-                    <div className="cc tradeable put" title="Click to write (sell)" onClick={()=>setTrade({row,side:"put",mode:"write"})}>
-                      {fmtN(Math.max(0,row.put.premium-sp))}
-                    </div>
-                    <div className="cc">{oi.toLocaleString()}</div>
-                    <div className="cc">{vol}</div>
-                  </div>
-                );
-              })}
+              {chain.map((row,i)=>(
+                <ChainRowView key={row.strike} row={row} isAtm={i===atmIdx} fmtStrike={fmtK} onTrade={openTrade}/>
+              ))}
               </>)}
             </div>
           )}
