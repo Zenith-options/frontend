@@ -3,6 +3,7 @@ import { Fraunces, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { StoreHydrator } from "../components/StoreHydrator";
 import { BackendDataProvider } from "../lib/context/BackendDataContext";
+import { SessionBanner } from "../components/SessionBanner";
 import { Toaster } from "../components/toast/Toaster";
 import { SpotFeedProvider } from "../lib/context/SpotFeedContext";
 
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <StoreHydrator />
         <Toaster />
+        <SessionBanner />
         <SpotFeedProvider>
           <BackendDataProvider>{children}</BackendDataProvider>
         </SpotFeedProvider>
