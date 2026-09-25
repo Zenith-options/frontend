@@ -131,9 +131,7 @@ needs the same guard.
 - Wallet sign-in (`signBlob` → verify → bearer token) hasn't been manually
   confirmed against a live Freighter extension — no extension available in
   this environment. The flow is logically complete, not hardware-tested.
-- The backend's `/api/v1/portfolio/payoff` endpoint has a typed client
-  (`src/lib/api/payoff.ts`) but nothing calls it — the payoff diagram still
-  computes locally (`src/lib/payoff.ts`). Multi-leg strategy *preview*
+- Multi-leg strategy *preview*
   pricing (before execution) is also local-only, not backend-priced.
 - The home page's preview chain still runs its own local random-walk spot
   simulation rather than the shared WebSocket feed — only its watchlist is
