@@ -19,11 +19,13 @@ import { StarButton } from "../../components/StarButton";
 import { SpotPriceChart } from "../../components/SpotPriceChart";
 import { usePriceHistory } from "../../lib/usePriceHistory";
 import { useHydrated } from "../../lib/useHydrated";
+import { parseTerminalUrl, buildShareUrl, type TerminalUrlState, type ViewTab } from "../../lib/urlState";
+import { useUrlState } from "../../lib/useUrlState";
 import { StrategyPicker } from "../../components/StrategyPicker";
 import { MultiLegPayoffDiagram } from "../../components/MultiLegPayoffDiagram";
 import { VolSurfaceHeatmap } from "../../components/VolSurfaceHeatmap";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
-import { type StrategyTemplate } from "../../lib/strategies";
+import { STRATEGY_TEMPLATES, type StrategyTemplate } from "../../lib/strategies";
 import { netPremium, type PricedLeg } from "../../lib/payoff";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
@@ -39,8 +41,9 @@ export default function OptionsPage() {
 
 function OptionsPageContent() {
   const params = useSearchParams();
-  const [sym, setSym] = useState(params.get("u")??"XLM");
-  const [expiry, setExpiry] = useState(EXPIRIES[2]);
+  const initialUrl = useMemo(()=>parseTerminalUrl(params),[]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [sym, setSym] = useState(initialUrl.u);
+  const [expiry, setExpiry] = useState(EXPIRIES.find(e=>e.days===initialUrl.exp)??EXPIRIES[2]);
   // Live from the shared WebSocket feed (SpotFeedProvider, mounted at
   // the root) — null until the first message arrives or if the socket's
   // still reconnecting, in which case the static seed constants below
@@ -60,9 +63,28 @@ function OptionsPageContent() {
   const spot = spotData?.prices[sym] ?? market.price;
   const vol = spotData?.vols[sym] ?? market.vol;
   const priceHistory = usePriceHistory(sym, spot);
-  const [contracts, setContracts] = useState("1");
-  const [viewTab, setViewTab] = useState<"chain"|"positions"|"strategies"|"surface">("chain");
-  const [selectedStrategy, setSelectedStrategy] = useState<StrategyTemplate|null>(null);
+  const [contracts, setContracts] = useState(String(initialUrl.qty));
+  const [viewTab, setViewTab] = useState<ViewTab>(initialUrl.tab);
+  const [selectedStrategy, setSelectedStrategy] = useState<StrategyTemplate|null>(
+    STRATEGY_TEMPLATES.find(t=>t.id===initialUrl.strategy)??null);
+  const [focusStrike, setFocusStrike] = useState<number|null>(initialUrl.strike);
+  const urlSnapshot: TerminalUrlState = {
+    u:sym, exp:expiry.days, tab:viewTab, strategy:selectedStrategy?.id??null,
+    qty:Math.max(1,Math.round(parseFloat(contracts)||1)), strike:trade?.row.strike??focusStrike,
+  };
+  useUrlState(urlSnapshot, next=>{
+    setSym(next.u);
+    setExpiry(EXPIRIES.find(e=>e.days===next.exp)??EXPIRIES[2]);
+    setViewTab(next.tab);
+    setSelectedStrategy(STRATEGY_TEMPLATES.find(t=>t.id===next.strategy)??null);
+    setContracts(String(next.qty));
+    setFocusStrike(next.strike);
+  });
+  const [linkCopied, setLinkCopied] = useState(false);
+  const copyLink = () => {
+    const url = buildShareUrl(window.location.origin, window.location.pathname, urlSnapshot);
+    navigator.clipboard?.writeText(url).then(()=>{setLinkCopied(true);setTimeout(()=>setLinkCopied(false),1500)}).catch(()=>{});
+  };
   const [showStrategyConfirm, setShowStrategyConfirm] = useState(false);
   const prevSpotRef = useRef(spot);
 
@@ -466,7 +488,13 @@ function OptionsPageContent() {
 
           {viewTab==="strategies"&&(
             <div style={{flex:1,overflowY:"auto",padding:16,display:"grid",gridTemplateColumns:"280px 1fr",gap:16}}>
-              <StrategyPicker selectedId={selectedStrategy?.id??null} onSelect={setSelectedStrategy}/>
+              <div>
+                <StrategyPicker selectedId={selectedStrategy?.id??null} onSelect={setSelectedStrategy}/>
+                <button onClick={copyLink} style={{marginTop:10,padding:"6px 12px",fontSize:12,background:"transparent",
+                  border:"1px solid var(--border-strong)",color:"var(--text-mid)",cursor:"pointer"}}>
+                  {linkCopied?"Link copied":"Copy link"}
+                </button>
+              </div>
 
               {selectedStrategy&&(
                 <div>
