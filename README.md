@@ -153,3 +153,12 @@ needs the same guard.
 ## License
 
 MIT © Zenith Protocol Contributors
+
+## API contracts
+
+`src/lib/api/schemas.ts` holds a Zod schema per backend response; types in
+`types.ts` are `z.infer`-derived. `request()` validates each response and throws
+a `ContractError` (with per-field paths) on drift: shown in a dev overlay, sent
+to `NEXT_PUBLIC_MONITOR_URL` in production. Extra backend fields are stripped;
+numeric strings are coerced. `npm run api:check` validates the fixtures in
+`contracts/fixtures/` (named after schema exports) and flags key drift.

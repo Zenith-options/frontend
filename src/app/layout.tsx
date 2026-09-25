@@ -3,6 +3,7 @@ import { Fraunces, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { StoreHydrator } from "../components/StoreHydrator";
 import { BackendDataProvider } from "../lib/context/BackendDataContext";
+import { ContractErrorOverlay } from "../components/ContractErrorOverlay";
 import { QueryProvider } from "../components/QueryProvider";
 import { SpotFeedProvider } from "../lib/context/SpotFeedContext";
 
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${fraunces.variable} ${plexSans.variable} ${jetbrainsMono.variable}`}>
       <body>
         <StoreHydrator />
+        <ContractErrorOverlay />
         <QueryProvider>
           <SpotFeedProvider>
             <BackendDataProvider>{children}</BackendDataProvider>
