@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getAccount } from "../api/positions";
 import type { Account } from "../api/types";
+import { toast } from "../toast";
 
 /**
  * Account balance/collateral from the backend. `token` should be `null`
@@ -21,7 +22,10 @@ export function useBackendAccount(token: string | null) {
     setLoading(true);
     getAccount(token)
       .then(setAccount)
-      .catch(() => setAccount(null))
+      .catch((err) => {
+        setAccount(null);
+        toast.fromError(err, { context: "Account", retry: refresh });
+      })
       .finally(() => setLoading(false));
   }, [token]);
 

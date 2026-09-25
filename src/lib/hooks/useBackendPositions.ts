@@ -9,6 +9,7 @@ import {
 } from "../api/positions";
 import { executeStrategy } from "../api/strategies";
 import type { AggregateGreeks, Position } from "../api/types";
+import { toast } from "../toast";
 
 const ZERO_GREEKS: AggregateGreeks = { delta: 0, gamma: 0, theta: 0, vega: 0 };
 
@@ -37,7 +38,8 @@ export function useBackendPositions(token: string | null) {
         setPositions(pos);
         setGreeks(g);
       })
-      .catch(() => {
+      .catch((err) => {
+        toast.fromError(err, { context: "Positions", retry: refresh });
         setPositions([]);
         setGreeks(ZERO_GREEKS);
       })

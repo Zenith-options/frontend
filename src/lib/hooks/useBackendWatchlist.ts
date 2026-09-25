@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { addToWatchlist, getWatchlist, removeFromWatchlist } from "../api/watchlist";
 import type { WatchlistItem } from "../api/types";
+import { toast } from "../toast";
 
 /**
  * Watchlist from the backend. `token` should be `null` pre-hydration —
@@ -18,7 +19,10 @@ export function useBackendWatchlist(token: string | null) {
     setLoading(true);
     getWatchlist(token)
       .then(setItems)
-      .catch(() => setItems([]))
+      .catch((err) => {
+        setItems([]);
+        toast.fromError(err, { context: "Watchlist", retry: refresh });
+      })
       .finally(() => setLoading(false));
   }, [token]);
 

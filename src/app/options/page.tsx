@@ -25,6 +25,7 @@ import { VolSurfaceHeatmap } from "../../components/VolSurfaceHeatmap";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { type StrategyTemplate } from "../../lib/strategies";
 import { netPremium, type PricedLeg } from "../../lib/payoff";
+import { toast } from "../../lib/toast";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
@@ -86,7 +87,7 @@ function OptionsPageContent() {
     getExpiryCalendar(sym).then(cal=>{
       if(cancelled)return;
       setExpiries(cal.expiries.map(e=>({label:e.label,days:e.days_to_expiry})));
-    }).catch(()=>{/* keep showing the local EXPIRIES fallback */});
+    }).catch(()=>{/* deliberate: expiry calendar is cosmetic; the local EXPIRIES list stays (chain fetch surfaces backend outages) */});
     return ()=>{cancelled=true;};
   },[sym]);
 
@@ -116,6 +117,7 @@ function OptionsPageContent() {
       // Backend unreachable — fall back to the local Black-Scholes calc
       // so the chain still renders something usable.
       if(cancelled)return;
+      toast.warning("Live chain unavailable — showing locally modeled prices.");
       setChain(Array.from({length:21},(_,i)=>{
         const n=i-10;
         const strike=Math.round(spot*(1+n*0.04)*10000)/10000;
@@ -140,7 +142,7 @@ function OptionsPageContent() {
           put:{premium:e.put.premium,delta:e.put.delta,gamma:e.put.gamma,theta:e.put.theta,vega:e.put.vega,iv:e.put.iv},
           itmCall:e.is_itm_call,itmPut:e.is_itm_put,
         })));
-      }).catch(()=>{/* keep showing the last known chain */});
+      }).catch(()=>{/* deliberate: 4s poll; the last known chain stays and the initial load already surfaced any outage */});
     },4000);
     return ()=>clearInterval(id);
   },[sym,expiry.days]);

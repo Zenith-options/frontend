@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getHistory } from "../api/history";
 import type { HistoryResponse } from "../api/types";
+import { toast } from "../toast";
 
 const EMPTY: HistoryResponse = { trades: [], stats: { trade_count: 0, win_count: 0, loss_count: 0, total_realized_pnl: 0 } };
 
@@ -23,7 +24,10 @@ export function useBackendHistory(token: string | null) {
     setLoading(true);
     getHistory(token)
       .then(setData)
-      .catch(() => setData(EMPTY))
+      .catch((err) => {
+        setData(EMPTY);
+        toast.fromError(err, { context: "History", retry: refresh });
+      })
       .finally(() => setLoading(false));
   }, [token]);
 

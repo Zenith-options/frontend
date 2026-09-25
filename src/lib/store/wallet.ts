@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import freighterApi from "@stellar/freighter-api";
+import { toast } from "../toast";
 import { getMe, requestNonce, verifySignature } from "../api/auth";
 
 export type WalletStatus = "idle" | "connecting" | "connected" | "not-installed" | "error";
@@ -56,7 +57,7 @@ export const useWalletStore = create<WalletState>()(
             return;
           }
           const address = await freighterApi.requestAccess();
-          const details = await freighterApi.getNetworkDetails().catch(() => null);
+          const details = await freighterApi.getNetworkDetails().catch(() => null /* deliberate: network label is optional */);
           set({ status: "connected", address, network: details?.network ?? null, error: null });
 
           try {
@@ -84,7 +85,7 @@ export const useWalletStore = create<WalletState>()(
             return;
           }
           const address = await freighterApi.getPublicKey();
-          const details = await freighterApi.getNetworkDetails().catch(() => null);
+          const details = await freighterApi.getNetworkDetails().catch(() => null /* deliberate: network label is optional */);
           set({ status: "connected", address, network: details?.network ?? null });
 
           // A persisted token might still be valid (sessions last 24h) —
@@ -94,7 +95,7 @@ export const useWalletStore = create<WalletState>()(
           const stillValid = persistedToken
             ? await getMe(persistedToken)
                 .then(() => true)
-                .catch(() => false)
+                .catch(() => false /* deliberate: any failure means the token is unusable; re-sign below */)
             : false;
 
           if (stillValid) return;
@@ -102,8 +103,9 @@ export const useWalletStore = create<WalletState>()(
           try {
             const token = await signInWithBackend(address);
             set({ token });
-          } catch {
+          } catch (err) {
             set({ token: null });
+            toast.fromError(err, { context: "Sign-in" });
           }
         } catch {
           set({ status: "idle", address: null, network: null, token: null });

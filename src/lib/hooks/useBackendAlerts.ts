@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createAlert, deleteAlert, getAlerts } from "../api/alerts";
 import type { Alert, AlertCondition } from "../api/types";
+import { toast } from "../toast";
 
 /**
  * Alerts from the backend, polled every 5s so a wallet's other tabs (and
@@ -21,7 +22,11 @@ export function useBackendAlerts(token: string | null) {
     setLoading(true);
     getAlerts(token)
       .then(setAlerts)
-      .catch(() => setAlerts([]))
+      .catch((err) => {
+        setAlerts([]);
+        // Polled every 5s; the toast queue dedupes identical errors.
+        toast.fromError(err, { context: "Alerts", retry: refresh });
+      })
       .finally(() => setLoading(false));
   }, [token]);
 
