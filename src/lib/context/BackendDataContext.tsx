@@ -1,11 +1,12 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect } from "react";
 import { useBackendAccount } from "../hooks/useBackendAccount";
 import { useBackendPositions } from "../hooks/useBackendPositions";
 import { useBackendWatchlist } from "../hooks/useBackendWatchlist";
 import { useBackendAlerts } from "../hooks/useBackendAlerts";
 import { useWalletStore } from "../store/wallet";
+import { broadcast, onTabMessage } from "../tabs/channel";
 import { useHydrated } from "../useHydrated";
 import type { Account } from "../api/types";
 
@@ -65,24 +66,41 @@ export function BackendDataProvider({ children }: { children: React.ReactNode })
 
   // Every position mutation changes the account balance/collateral too —
   // refresh it here rather than trusting every call site to remember to.
+  // A trade in another tab invalidates this tab's account and positions.
+  useEffect(
+    () =>
+      onTabMessage((msg) => {
+        if (msg.type !== "invalidate") return;
+        if (msg.keys.includes("account")) refreshAccount();
+        if (msg.keys.includes("positions")) refreshPositions();
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [effectiveToken]
+  );
+  const invalidateOthers = () => broadcast({ type: "invalidate", keys: ["account", "positions"] });
+
   const openAndRefreshAccount: typeof open = async (params) => {
     const result = await open(params);
     refreshAccount();
+    invalidateOthers();
     return result;
   };
   const openStrategyAndRefreshAccount: typeof openStrategy = async (legs) => {
     const result = await openStrategy(legs);
     refreshAccount();
+    invalidateOthers();
     return result;
   };
   const closeAndRefreshAccount: typeof close = async (id) => {
     const result = await close(id);
     refreshAccount();
+    invalidateOthers();
     return result;
   };
   const rollAndRefreshAccount: typeof roll = async (id, params) => {
     const result = await roll(id, params);
     refreshAccount();
+    invalidateOthers();
     return result;
   };
 
