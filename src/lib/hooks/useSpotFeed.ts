@@ -13,11 +13,13 @@ export type SpotFeedStatus = "connecting" | "open" | "closed";
  * realistic enough that "just open it once" isn't good enough for
  * something billed as a live feed.
  */
-export function useSpotFeed(): { data: SpotResponse | null; status: SpotFeedStatus } {
+export function useSpotFeed(enabled = true): { data: SpotResponse | null; status: SpotFeedStatus } {
   const [data, setData] = useState<SpotResponse | null>(null);
   const [status, setStatus] = useState<SpotFeedStatus>("connecting");
 
   useEffect(() => {
+    // Lazy mode: no socket is opened until a consumer asks for the feed.
+    if (!enabled) return;
     let cancelled = false;
     let attempt = 0;
     let unsubscribe: (() => void) | null = null;
@@ -49,7 +51,7 @@ export function useSpotFeed(): { data: SpotResponse | null; status: SpotFeedStat
       unsubscribe?.();
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, []);
+  }, [enabled]);
 
   return { data, status };
 }

@@ -135,9 +135,6 @@ needs the same guard.
   (`src/lib/api/payoff.ts`) but nothing calls it — the payoff diagram still
   computes locally (`src/lib/payoff.ts`). Multi-leg strategy *preview*
   pricing (before execution) is also local-only, not backend-priced.
-- The home page's preview chain still runs its own local random-walk spot
-  simulation rather than the shared WebSocket feed — only its watchlist is
-  backend-real.
 - `src/app/options/page.tsx` has grown large (chain + positions + strategies
   + surface + both trade panels + confirm dialogs) — a good candidate to
   split into sub-components before adding much more to it.
