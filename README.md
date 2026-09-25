@@ -125,6 +125,7 @@ needs the same guard.
 
 ## Known gaps
 
+- PWA: hand-written `public/sw.js` (no Serwist/Workbox dependency), production-only registration, SVG icons only (no PNG set), no Playwright offline tests and no Lighthouse run yet. Only last-known public spot prices are snapshotted (IndexedDB, wiped on disconnect); positions/account are not cached.
 - No test suite.
 - No on-chain/Soroban integration — the backend is a paper-trading API, not
   a wallet transaction signer against the contracts.
