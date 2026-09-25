@@ -13,6 +13,7 @@
     "react": "^18",
     "react-dom": "^18",
     "@stellar/freighter-api": "^2.0.0",
+    "@tanstack/react-query": "^5.51.0",
     "zustand": "^4.5.2"
   },
   "devDependencies": {

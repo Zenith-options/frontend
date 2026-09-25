@@ -3,6 +3,7 @@ import { Fraunces, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { StoreHydrator } from "../components/StoreHydrator";
 import { BackendDataProvider } from "../lib/context/BackendDataContext";
+import { QueryProvider } from "../components/QueryProvider";
 import { SpotFeedProvider } from "../lib/context/SpotFeedContext";
 
 const fraunces = Fraunces({
@@ -30,9 +31,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${fraunces.variable} ${plexSans.variable} ${jetbrainsMono.variable}`}>
       <body>
         <StoreHydrator />
-        <SpotFeedProvider>
-          <BackendDataProvider>{children}</BackendDataProvider>
-        </SpotFeedProvider>
+        <QueryProvider>
+          <SpotFeedProvider>
+            <BackendDataProvider>{children}</BackendDataProvider>
+          </SpotFeedProvider>
+        </QueryProvider>
       </body>
     </html>
   );
