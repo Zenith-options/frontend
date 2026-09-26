@@ -55,8 +55,9 @@ npm run lint     # next lint
 |---|---|
 | `/` | Marketing/landing page, live preview chain, watchlist |
 | `/options` | The terminal: chain, positions, strategy builder, vol surface |
-| `/portfolio` | Open positions marked-to-market, roll, close, CSV export, portfolio-wide risk panel |
-| `/history` | Full trade ledger (opens + closes) with realized P&L stats |
+| `/portfolio` | Open positions marked-to-market, roll, close, CSV export, risk panel, P&L attribution |
+| `/history` | Trade ledger + performance analytics (equity curve, drawdown, breakdowns) |
+| `/calendar` | Expiry calendar (month/list), settlement center, `.ics` download |
 
 The `/options` page is tabbed:
 
@@ -78,8 +79,9 @@ src/
 │   ├── layout.tsx        # Mounts SpotFeedProvider + BackendDataProvider at the root
 │   ├── page.tsx          # Home
 │   ├── options/          # Chain / Positions / Strategies / Surface
-│   ├── portfolio/        # Open positions, roll, close
-│   └── history/          # Trade ledger
+│   ├── portfolio/        # Open positions, roll, close, attribution
+│   ├── history/          # Trade ledger + performance analytics
+│   └── calendar/         # Expiry calendar + settlement center
 ├── components/           # UI components (charts, dialogs, header, etc.)
 └── lib/
     ├── api/              # Typed backend client: one file per domain
@@ -95,6 +97,10 @@ src/
     ├── store/             # zustand + persist — now just wallet.ts (connect,
     │                      # sign-in-with-backend, bearer token)
     ├── pricing.ts        # Black-Scholes, vol smile — fallback/preview layer, see above
+    ├── attribution.ts    # Taylor Greek P&L attribution (local baselines)
+    ├── analytics.ts      # Equity curve, drawdown, trade statistics
+    ├── expiry.ts         # Expiry derivation, grouping, .ics, settlement helpers
+    ├── alertRules.ts     # Client-side alert rule evaluator (hysteresis/cooldown)
     ├── collateral.ts     # Collateral requirements (100% calls, 110% puts)
     ├── payoff.ts          # Multi-leg combined payoff math (local; backend equivalent unused)
     ├── risk.ts             # Whole-portfolio risk: groups all open positions per
@@ -102,7 +108,7 @@ src/
     │                       # account across a spot-shock grid
     ├── volSurface.ts      # Term-structure-aware IV surface grid
     ├── strategies.ts      # Multi-leg strategy templates
-    ├── csv.ts / notify.ts # CSV export, browser Notification wrapper
+    ├── csv.ts / notify.ts # CSV export, browser + in-app notifications
     ├── useHydrated.ts     # SSR-hydration-safety hook (see below) — still relevant for wallet.ts
     └── usePriceHistory.ts # In-memory spot sparkline buffer
 ```
@@ -123,9 +129,13 @@ reads wallet-gated state follows the same pattern. If you add a new
 component that reads the wallet token to fetch or render backend data, it
 needs the same guard.
 
+```bash
+npm test          # node:test unit suite (attribution, analytics, expiry, alertRules)
+```
+
 ## Known gaps
 
-- No test suite.
+- No RTL / component test suite yet (pure lib modules are covered).
 - No on-chain/Soroban integration — the backend is a paper-trading API, not
   a wallet transaction signer against the contracts.
 - Wallet sign-in (`signBlob` → verify → bearer token) hasn't been manually

@@ -14,6 +14,7 @@ import { collateralRequired } from "../../lib/collateral";
 import { toCsv, downloadCsv } from "../../lib/csv";
 import { ExportButton } from "../../components/ExportButton";
 import { PortfolioRiskPanel } from "../../components/PortfolioRiskPanel";
+import { AttributionPanel } from "../../components/AttributionPanel";
 
 interface Marked extends Position {
   spot: number;
@@ -24,6 +25,7 @@ interface Marked extends Position {
   liveGamma: number;
   liveTheta: number;
   liveVega: number;
+  iv: number;
 }
 
 export default function PortfolioPage() {
@@ -61,6 +63,7 @@ export default function PortfolioPage() {
       ...p, spot, currentPremium, pnl,
       pnlPct: entryTotal > 0 ? (pnl / entryTotal) * 100 : 0,
       liveDelta: g.delta, liveGamma: g.gamma, liveTheta: g.theta, liveVega: g.vega,
+      iv: vol,
     };
   }), [backendPositions, spots, vols]);
 
@@ -230,6 +233,24 @@ export default function PortfolioPage() {
           )}
 
           {backendPositions.length>0 && <PortfolioRiskPanel positions={backendPositions} spots={spots} />}
+
+          {marked.length>0 && (
+            <AttributionPanel marks={marked.map(m => ({
+              id: m.id,
+              underlying: m.underlying,
+              option_type: m.option_type,
+              position_type: m.position_type,
+              strike: m.strike,
+              contracts: m.contracts,
+              currentPremium: m.currentPremium,
+              spot: m.spot,
+              liveDelta: m.liveDelta,
+              liveGamma: m.liveGamma,
+              liveTheta: m.liveTheta,
+              liveVega: m.liveVega,
+              iv: m.iv,
+            }))} />
+          )}
 
           {strategyGroups.length>0 && (
             <div style={{marginBottom:24,display:"flex",flexDirection:"column",gap:8}}>
