@@ -1,5 +1,13 @@
 import { apiGet } from "./client";
-import type { BSResult, ExpiryCalendar, IvResult, OptionChainEntry, SpotResponse } from "./types";
+import type {
+  BSResult,
+  CandleResponse,
+  ExpiryCalendar,
+  IvResult,
+  OptionChainEntry,
+  SpotResponse,
+} from "./types";
+import type { Candle, CandleInterval } from "../candles";
 
 export function getSpot(): Promise<SpotResponse> {
   return apiGet("/api/v1/spot");
@@ -44,4 +52,31 @@ export function getImpliedVol(params: {
 
 export function getExpiryCalendar(underlying: string): Promise<ExpiryCalendar> {
   return apiGet(`/api/v1/expiries/${underlying}`);
+}
+
+/**
+ * Historical OHLC candles.
+ * Contract: GET /api/v1/candles?underlying=XLM&interval=1m&limit=500
+ * Response: { underlying, interval, candles: [{ time, open, high, low, close, volume? }] }
+ * `time` is unix seconds (UTC bucket start).
+ */
+export async function getCandles(
+  underlying: string,
+  interval: CandleInterval,
+  limit = 500
+): Promise<Candle[]> {
+  const q = new URLSearchParams({
+    underlying,
+    interval,
+    limit: String(limit),
+  });
+  const res = await apiGet<CandleResponse>(`/api/v1/candles?${q}`);
+  return res.candles.map(c => ({
+    time: c.time,
+    open: c.open,
+    high: c.high,
+    low: c.low,
+    close: c.close,
+    volume: c.volume,
+  }));
 }

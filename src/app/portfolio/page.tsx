@@ -229,7 +229,7 @@ export default function PortfolioPage() {
             </div>
           )}
 
-          {backendPositions.length>0 && <PortfolioRiskPanel positions={backendPositions} spots={spots} />}
+          {backendPositions.length>0 && <PortfolioRiskPanel positions={backendPositions} spots={spots} vols={vols} />}
 
           {strategyGroups.length>0 && (
             <div style={{marginBottom:24,display:"flex",flexDirection:"column",gap:8}}>

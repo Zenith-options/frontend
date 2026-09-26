@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --experimental-strip-types --import ./scripts/register.mjs --test src/lib/heatScale.test.ts src/lib/candles.test.ts src/lib/volSurface.test.ts src/lib/risk.scenario.test.ts"
   },
   "dependencies": {
     "next": "14.2.3",

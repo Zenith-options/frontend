@@ -29,6 +29,16 @@ export interface OptionChainEntry {
   put: BSResult;
   is_itm_call: boolean;
   is_itm_put: boolean;
+  /**
+   * Optional liquidity fields. When absent the chain UI shows "N/A"
+   * (never mock values). Backend should populate these when available:
+   *   call_volume / put_volume — contracts traded in the session
+   *   call_open_interest / put_open_interest — outstanding contracts
+   */
+  call_volume?: number | null;
+  put_volume?: number | null;
+  call_open_interest?: number | null;
+  put_open_interest?: number | null;
 }
 
 export interface ExpiryInfo {
@@ -116,4 +126,20 @@ export interface Alert {
   triggered: boolean;
   created_at: string;
   triggered_at: string | null;
+}
+
+/** GET /api/v1/candles response. time = unix seconds (UTC). */
+export interface CandleBar {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+}
+
+export interface CandleResponse {
+  underlying: string;
+  interval: string;
+  candles: CandleBar[];
 }
