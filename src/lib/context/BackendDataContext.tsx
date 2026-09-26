@@ -20,6 +20,8 @@ interface BackendData {
   open: ReturnType<typeof useBackendPositions>["open"];
   openStrategy: ReturnType<typeof useBackendPositions>["openStrategy"];
   close: ReturnType<typeof useBackendPositions>["close"];
+  closeStrategyGroup: ReturnType<typeof useBackendPositions>["closeStrategyGroup"];
+  closeBatch: ReturnType<typeof useBackendPositions>["closeBatch"];
   roll: ReturnType<typeof useBackendPositions>["roll"];
   watchlist: ReturnType<typeof useBackendWatchlist>["items"];
   watchlistLoading: boolean;
@@ -55,7 +57,7 @@ export function BackendDataProvider({ children }: { children: React.ReactNode })
   const { account, loading: accountLoading, refresh: refreshAccount } = useBackendAccount(effectiveToken);
   const {
     positions, greeks, loading: positionsLoading, refresh: refreshPositions,
-    open, openStrategy, close, roll,
+    open, openStrategy, close, closeStrategyGroup, closeBatch, roll,
   } = useBackendPositions(effectiveToken);
   const {
     items: watchlist, loading: watchlistLoading,
@@ -75,8 +77,18 @@ export function BackendDataProvider({ children }: { children: React.ReactNode })
     refreshAccount();
     return result;
   };
-  const closeAndRefreshAccount: typeof close = async (id) => {
-    const result = await close(id);
+  const closeAndRefreshAccount: typeof close = async (id, contracts) => {
+    const result = await close(id, contracts);
+    refreshAccount();
+    return result;
+  };
+  const closeStrategyGroupAndRefresh: typeof closeStrategyGroup = async (strategyId, legIds, opts) => {
+    const result = await closeStrategyGroup(strategyId, legIds, opts);
+    refreshAccount();
+    return result;
+  };
+  const closeBatchAndRefresh: typeof closeBatch = async (ids, opts) => {
+    const result = await closeBatch(ids, opts);
     refreshAccount();
     return result;
   };
@@ -92,7 +104,10 @@ export function BackendDataProvider({ children }: { children: React.ReactNode })
         account, accountLoading, refreshAccount,
         positions, greeks, positionsLoading, refreshPositions,
         open: openAndRefreshAccount, openStrategy: openStrategyAndRefreshAccount,
-        close: closeAndRefreshAccount, roll: rollAndRefreshAccount,
+        close: closeAndRefreshAccount,
+        closeStrategyGroup: closeStrategyGroupAndRefresh,
+        closeBatch: closeBatchAndRefresh,
+        roll: rollAndRefreshAccount,
         watchlist, watchlistLoading, addToWatchlist, removeFromWatchlist,
         alerts, alertsLoading, addAlert, removeAlert,
       }}
