@@ -3,8 +3,6 @@
 import { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { PayoffDiagram } from "../../components/PayoffDiagram";
-import { VolSmile } from "../../components/VolSmile";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
 import { MARKETS, EXPIRIES, bs, smileVol, seededRandom, fmtN, fmtSpot, fmtK, type Greeks } from "../../lib/pricing";
@@ -13,18 +11,19 @@ import { ApiError } from "../../lib/api/client";
 import { useBackendData } from "../../lib/context/BackendDataContext";
 import { useSpotFeedContext } from "../../lib/context/SpotFeedContext";
 import { useWalletStore } from "../../lib/store/wallet";
-import { collateralRequired } from "../../lib/collateral";
 import { AlertsPanel } from "../../components/AlertsPanel";
 import { StarButton } from "../../components/StarButton";
 import { SpotPriceChart } from "../../components/SpotPriceChart";
 import { usePriceHistory } from "../../lib/usePriceHistory";
 import { useHydrated } from "../../lib/useHydrated";
-import { StrategyPicker } from "../../components/StrategyPicker";
-import { MultiLegPayoffDiagram } from "../../components/MultiLegPayoffDiagram";
+import { StrategyBuilder } from "../../components/StrategyBuilder";
+import { OrderTicket } from "../../components/OrderTicket";
 import { VolSurfaceHeatmap } from "../../components/VolSurfaceHeatmap";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { type StrategyTemplate } from "../../lib/strategies";
 import { netPremium, type PricedLeg } from "../../lib/payoff";
+import { checkPriceProtection } from "../../lib/orderTicket";
+import { VolSmile } from "../../components/VolSmile";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
@@ -47,7 +46,6 @@ function OptionsPageContent() {
   // are what render instead.
   const { data: spotData } = useSpotFeedContext();
   const [trade, setTrade] = useState<TradeState|null>(null);
-  const [showTradeConfirm, setShowTradeConfirm] = useState(false);
   const [tradeError, setTradeError] = useState<string|null>(null);
   const [submitting, setSubmitting] = useState(false);
   const hydrated = useHydrated();
@@ -56,14 +54,15 @@ function OptionsPageContent() {
     open:openBackendPosition,openStrategy:openBackendStrategy} = useBackendData();
   const favorites = useMemo(()=>watchlist.map(w=>w.underlying),[watchlist]);
   const balance = account?.balance ?? 0;
+  const collateralLocked = account?.collateral_locked ?? 0;
   const market = MARKETS.find(m=>m.sym===sym)??MARKETS[0];
   const spot = spotData?.prices[sym] ?? market.price;
   const vol = spotData?.vols[sym] ?? market.vol;
   const priceHistory = usePriceHistory(sym, spot);
-  const [contracts, setContracts] = useState("1");
   const [viewTab, setViewTab] = useState<"chain"|"positions"|"strategies"|"surface">("chain");
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyTemplate|null>(null);
   const [showStrategyConfirm, setShowStrategyConfirm] = useState(false);
+  const [pendingStrategyLegs, setPendingStrategyLegs] = useState<PricedLeg[]|null>(null);
   const prevSpotRef = useRef(spot);
 
   const t = expiry.days/365;
@@ -164,65 +163,34 @@ function OptionsPageContent() {
 
   const atmIdx=chain.findIndex(r=>!r.itmCall);
   const tradeGreeks=trade?(trade.side==="call"?trade.row.call:trade.row.put):null;
-
-  const qty=Math.max(0.01,parseFloat(contracts)||1);
-
-  // Strategy leg pricing still uses the local bs()/smileVol() calc (with
-  // the static seed vol, not the live-polled one) rather than a backend
-  // round trip per leg — out of scope for this pass, which only moved
-  // the chain table and spot ticker over. Premiums here won't always
-  // match a leg's corresponding chain row exactly once vol has drifted
-  // from its seed value.
-  const pricedLegs=useMemo(():PricedLeg[]=>{
-    if(!selectedStrategy)return[];
-    return selectedStrategy.legs.map(leg=>{
-      const strike=Math.round(spot*leg.strikeOffset*10000)/10000;
-      const legVol=smileVol(market.vol,leg.strikeOffset);
-      const greeks=bs(spot,strike,legVol,t,leg.side==="call");
-      return{side:leg.side,action:leg.action,strike,contracts:qty,greeks};
-    });
-  },[selectedStrategy,spot,market.vol,t,qty]);
-
-  const strategyNetPremium=useMemo(()=>netPremium(pricedLegs),[pricedLegs]);
-  const strategyCollateral=useMemo(()=>pricedLegs.reduce((sum,leg)=>
-    leg.action==="sell"?sum+collateralRequired(leg.side,leg.contracts,leg.strike,spot):sum,0
-  ),[pricedLegs,spot]);
-  const strategyRequiredFunds=strategyCollateral+Math.max(0,strategyNetPremium);
-  const strategyInsufficientFunds=pricedLegs.length>0&&balance<strategyRequiredFunds;
-  const collateral=trade&&trade.mode==="write"?collateralRequired(trade.side,qty,trade.row.strike,spot):0;
-  const requiredFunds=trade?(trade.mode==="write"?collateral:(tradeGreeks?.premium??0)*qty):0;
-  const insufficientFunds=balance<requiredFunds;
   const notSignedIn=!token;
 
-  const execTrade=async()=>{
-    if(!trade||!tradeGreeks||insufficientFunds||submitting)return;
-    setSubmitting(true);
-    setTradeError(null);
-    try{
-      await openBackendPosition({
-        underlying:sym,strike:trade.row.strike,expiryDays:expiry.days,
-        optionType:trade.side,positionType:trade.mode==="write"?"short":"long",contracts:qty,
-      });
-      setTrade(null);
-      setShowTradeConfirm(false);
-      setViewTab("positions");
-    }catch(err){
-      setTradeError(err instanceof ApiError?err.message:"Failed to open position");
-    }finally{
-      setSubmitting(false);
-    }
+  const submitOrderTicket=async(args:{quantity:number;quotedPremium:number;maxSlippageBps:number;limitPrice:number|null})=>{
+    if(!trade||!tradeGreeks)throw new Error("No trade selected");
+    const fillPremium=tradeGreeks.premium;
+    const check=checkPriceProtection(trade.mode,args.quotedPremium,fillPremium,args.maxSlippageBps,args.limitPrice);
+    if(check.ok===false)throw new Error(check.reason);
+    await openBackendPosition({
+      underlying:sym,strike:trade.row.strike,expiryDays:expiry.days,
+      optionType:trade.side,positionType:trade.mode==="write"?"short":"long",contracts:args.quantity,
+    });
+    setTrade(null);
+    setViewTab("positions");
+    return fillPremium;
   };
 
   const execStrategy=async()=>{
-    if(!selectedStrategy||pricedLegs.length===0||strategyInsufficientFunds||submitting)return;
+    const legs=pendingStrategyLegs??[];
+    if(legs.length===0||submitting)return;
     setSubmitting(true);
     setTradeError(null);
     try{
-      await openBackendStrategy(pricedLegs.map(leg=>({
+      await openBackendStrategy(legs.map(leg=>({
         underlying:sym,strike:leg.strike,expiryDays:expiry.days,
         optionType:leg.side,positionType:leg.action==="buy"?"long":"short",contracts:leg.contracts,
       })));
       setSelectedStrategy(null);
+      setPendingStrategyLegs(null);
       setShowStrategyConfirm(false);
       setViewTab("positions");
     }catch(err){
@@ -465,58 +433,28 @@ function OptionsPageContent() {
           )}
 
           {viewTab==="strategies"&&(
-            <div style={{flex:1,overflowY:"auto",padding:16,display:"grid",gridTemplateColumns:"280px 1fr",gap:16}}>
-              <StrategyPicker selectedId={selectedStrategy?.id??null} onSelect={setSelectedStrategy}/>
-
-              {selectedStrategy&&(
-                <div>
-                  <div style={{fontSize:14,fontWeight:700,color:"var(--text-hi)",marginBottom:12}}>{selectedStrategy.name}</div>
-                  {pricedLegs.map((leg,i)=>(
-                    <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",
-                      borderBottom:"1px solid var(--border-subtle)"}}>
-                      <span style={{fontSize:11,color:leg.action==="buy"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>
-                        {leg.action} {leg.side}
-                      </span>
-                      <span className="num" style={{fontSize:11,color:"var(--text-mid)"}}>K={fmtK(leg.strike)}</span>
-                      <span className="num" style={{fontSize:11,color:"var(--text-hi)"}}>${fmtN(leg.greeks.premium,4)}</span>
-                    </div>
-                  ))}
-                  <div style={{display:"flex",gap:16,marginTop:10}}>
-                    <div>
-                      <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)"}}>
-                        {strategyNetPremium>=0?"Net Debit":"Net Credit"}
-                      </div>
-                      <div className="num" style={{fontSize:13,fontWeight:600,color:strategyNetPremium>=0?"var(--put)":"var(--call)"}}>
-                        ${fmtN(Math.abs(strategyNetPremium),2)}
-                      </div>
-                    </div>
-                    {strategyCollateral>0&&(
-                      <div>
-                        <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)"}}>Collateral Required</div>
-                        <div className="num" style={{fontSize:13,fontWeight:600,color:"var(--atm)"}}>${fmtN(strategyCollateral,2)}</div>
-                      </div>
-                    )}
-                  </div>
-                  <div style={{marginTop:16}}>
-                    <MultiLegPayoffDiagram legs={pricedLegs} spot={spot} width={420} height={220}/>
-                  </div>
-                  <button onClick={()=>{setTradeError(null);setShowStrategyConfirm(true);}} disabled={strategyInsufficientFunds||notSignedIn} style={{marginTop:12,padding:"10px 20px",
-                    background:"var(--brand)",color:"var(--bg)",border:"none",fontSize:13,fontWeight:700,
-                    cursor:strategyInsufficientFunds||notSignedIn?"default":"pointer",opacity:strategyInsufficientFunds||notSignedIn?0.5:1}}>
-                    Execute {selectedStrategy.name} ({pricedLegs.length} legs)
-                  </button>
-                  {strategyInsufficientFunds&&(
-                    <div style={{marginTop:6,fontSize:11,color:"var(--put)"}}>
-                      Insufficient balance — needs ${fmtN(strategyRequiredFunds,2)}, have ${fmtN(balance,2)}.
-                    </div>
-                  )}
-                  {notSignedIn&&(
-                    <div style={{marginTop:6,fontSize:11,color:"var(--put)"}}>
-                      Connect your wallet to trade.
-                    </div>
-                  )}
-                </div>
-              )}
+            <div style={{flex:1,overflowY:"auto",padding:16}}>
+              <StrategyBuilder
+                spot={spot}
+                vol={vol}
+                expiryDays={expiry.days}
+                expiryLabel={expiry.label}
+                strikes={chain.map(r=>r.strike)}
+                balance={balance}
+                notSignedIn={notSignedIn}
+                submitting={submitting}
+                onExecute={(legs)=>{
+                  setPendingStrategyLegs(legs);
+                  setSelectedStrategy({
+                    id:"custom",
+                    name:legs.length?`Custom (${legs.length} legs)`:"Custom",
+                    description:"Custom multi-leg strategy",
+                    legs:legs.map(l=>({side:l.side,action:l.action,strikeOffset:l.strike/spot})),
+                  });
+                  setTradeError(null);
+                  setShowStrategyConfirm(true);
+                }}
+              />
             </div>
           )}
 
@@ -545,155 +483,27 @@ function OptionsPageContent() {
           )}
         </div>
 
-        {/* RIGHT PANEL */}
+        {/* RIGHT PANEL — professional order ticket */}
         {trade&&tradeGreeks&&(
-          <aside style={{width:316,flexShrink:0,borderLeft:"1px solid var(--border-default)",
-            overflowY:"auto",background:"var(--bg-raised)",display:"flex",flexDirection:"column"}}>
-
-            <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border-default)",
-              display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
-              <div>
-                <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",
-                  color:trade.side==="call"?"var(--call)":"var(--put)",marginBottom:4}}>
-                  {trade.mode==="write"?"WRITE ":"BUY "}{trade.side==="call"?"▲ CALL":"▼ PUT"}
-                </div>
-                <div style={{fontSize:15,fontWeight:700,color:"var(--text-hi)"}}>
-                  {sym} {trade.side==="call"?"Call":"Put"}
-                </div>
-                <div className="num" style={{fontSize:12,color:"var(--text-mid)"}}>
-                  K={fmtK(trade.row.strike)} · {expiry.label}
-                </div>
-              </div>
-              <button onClick={()=>setTrade(null)} style={{background:"none",border:"none",
-                color:"var(--text-lo)",fontSize:18,cursor:"pointer",lineHeight:1,padding:4}}>×</button>
-            </div>
-
-            {/* Payoff diagram */}
-            <div style={{padding:"14px 16px",borderBottom:"1px solid var(--border-default)"}}>
-              <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",
-                color:"var(--text-lo)",marginBottom:8}}>P&L at Expiry</div>
-              <PayoffDiagram
-                spot={spot} strike={trade.row.strike} premium={tradeGreeks.premium}
-                isCall={trade.side==="call"} short={trade.mode==="write"} contracts={qty}
-                width={284} height={155}
-              />
-            </div>
-
-            {/* Greeks grid */}
-            <div style={{padding:"14px 16px",borderBottom:"1px solid var(--border-default)"}}>
-              <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",
-                color:"var(--text-lo)",marginBottom:10}}>Option Greeks</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                {[{g:"Δ Delta",v:tradeGreeks.delta,dp:3,c:"var(--brand)"},
-                  {g:"Γ Gamma",v:tradeGreeks.gamma,dp:4,c:"var(--text-hi)"},
-                  {g:"Θ Theta",v:tradeGreeks.theta,dp:4,c:"var(--put)"},
-                  {g:"V Vega", v:tradeGreeks.vega, dp:3,c:"var(--atm)"},
-                ].map(item=>(
-                  <div key={item.g} style={{padding:"9px 10px",borderRadius:0,
-                    border:"1px solid var(--border-default)",background:"var(--bg-elevated)"}}>
-                    <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.08em",
-                      color:"var(--text-lo)",marginBottom:4}}>{item.g}</div>
-                    <div className="num" style={{fontSize:14,fontWeight:600,color:item.c}}>
-                      {item.v>=0?"+":"\u2212"}{Math.abs(item.v).toFixed(item.dp)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div style={{display:"flex",gap:6,marginTop:6}}>
-                {[{label:"Premium",v:`$${fmtN(tradeGreeks.premium)}`,c:"var(--text-hi)"},
-                  {label:"Impl. Vol",v:`${(tradeGreeks.iv*100).toFixed(1)}%`,c:"var(--brand)"},
-                ].map(item=>(
-                  <div key={item.label} style={{flex:1,padding:"9px 10px",borderRadius:0,
-                    border:"1px solid var(--border-default)",background:"var(--bg-elevated)"}}>
-                    <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.08em",
-                      color:"var(--text-lo)",marginBottom:4}}>{item.label}</div>
-                    <div className="num" style={{fontSize:14,fontWeight:600,color:item.c}}>{item.v}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Order entry */}
-            <div style={{padding:"14px 16px",borderBottom:"1px solid var(--border-default)"}}>
-              <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",
-                color:"var(--text-lo)",marginBottom:8}}>Order</div>
-              <div style={{marginBottom:10}}>
-                <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>Contracts</div>
-                <div style={{display:"flex",alignItems:"center",
-                  background:"var(--bg-overlay)",border:"1px solid var(--border-default)",
-                  borderRadius:0,overflow:"hidden"}}>
-                  <button onClick={()=>setContracts(c=>String(Math.max(0.01,(parseFloat(c)||1)-1)))}
-                    style={{width:36,height:40,border:"none",background:"none",color:"var(--text-mid)",fontSize:18,cursor:"pointer"}}>−</button>
-                  <input type="number" min="0.01" step="0.01" value={contracts}
-                    onChange={e=>setContracts(e.target.value)}
-                    onBlur={e=>setContracts(String(Math.max(0.01,parseFloat(e.target.value)||1)))}
-                    style={{flex:1,height:40,border:"none",background:"none",textAlign:"center",
-                      fontFamily:"var(--font-mono)",fontSize:16,color:"var(--text-hi)",outline:"none"}}/>
-                  <button onClick={()=>setContracts(c=>String((parseFloat(c)||0)+1))}
-                    style={{width:36,height:40,border:"none",background:"none",color:"var(--text-mid)",fontSize:18,cursor:"pointer"}}>+</button>
-                </div>
-              </div>
-              <div style={{background:"var(--bg-elevated)",borderRadius:0,padding:"9px 12px",marginBottom:10}}>
-                {(trade.mode==="write"?[
-                  ["Qty",`${contracts} × ${sym}`],
-                  ["Premium received",`+$${fmtN(tradeGreeks.premium*qty)}`],
-                  ["Collateral required",`$${fmtN(collateral)}`],
-                  ["Available balance",`$${fmtN(balance,2)}`],
-                ]:[
-                  ["Qty",`${contracts} × ${sym}`],
-                  ["Total premium",`$${fmtN(tradeGreeks.premium*qty)}`],
-                  ["Max loss",`$${fmtN(tradeGreeks.premium*qty)}`],
-                  ["Available balance",`$${fmtN(balance,2)}`],
-                ]).map(([k,v])=>(
-                  <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}>
-                    <span style={{fontSize:11,color:"var(--text-lo)"}}>{k}</span>
-                    <span className="num" style={{fontSize:11,
-                      color:k==="Premium received"?"var(--call)":"var(--text-hi)"}}>{v}</span>
-                  </div>
-                ))}
-                {insufficientFunds&&(
-                  <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid var(--border-default)",
-                    fontSize:11,color:"var(--put)"}}>
-                    Insufficient balance {trade.mode==="write"?"to post collateral":"to cover premium"}.
-                  </div>
-                )}
-                {notSignedIn&&(
-                  <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid var(--border-default)",
-                    fontSize:11,color:"var(--put)"}}>
-                    Connect your wallet to trade.
-                  </div>
-                )}
-                {tradeError&&(
-                  <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid var(--border-default)",
-                    fontSize:11,color:"var(--put)"}}>
-                    {tradeError}
-                  </div>
-                )}
-              </div>
-              <button onClick={()=>{setTradeError(null);setShowTradeConfirm(true);}} disabled={insufficientFunds||notSignedIn} style={{width:"100%",height:44,borderRadius:0,border:"none",
-                cursor:insufficientFunds||notSignedIn?"default":"pointer",fontSize:14,fontWeight:700,
-                opacity:insufficientFunds||notSignedIn?0.5:1,
-                background:trade.side==="call"?"var(--call)":"var(--put)",color:"var(--bg)"}}>
-                {trade.mode==="write"?"Write":"Buy"} {trade.side.toUpperCase()} @ {fmtK(trade.row.strike)}
-              </button>
-            </div>
-
-            <div style={{padding:"14px 16px"}}>
-              <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)",marginBottom:8}}>
-                Strategies using this strike
-              </div>
-              {(trade.side==="call"
-                ?["Covered Call — sell this call against stock","Bull Call Spread — buy this, sell higher strike","Long Call — pure directional bet"]
-                :["Protective Put — hedge long exposure","Bear Put Spread — buy this, sell lower strike","Cash-Secured Put — sell this for income"]
-              ).map(s=>(
-                <div key={s} style={{padding:"7px 0",borderBottom:"1px solid var(--border-subtle)",fontSize:11,color:"var(--text-mid)",cursor:"pointer",transition:"color 100ms"}}
-                  onMouseOver={e=>{(e.currentTarget as HTMLElement).style.color="var(--text-hi)"}}
-                  onMouseOut={e=>{(e.currentTarget as HTMLElement).style.color="var(--text-mid)"}}>
-                  → {s}
-                </div>
-              ))}
-            </div>
-          </aside>
+          <OrderTicket
+            trade={{
+              side:trade.side,
+              mode:trade.mode,
+              strike:trade.row.strike,
+              premium:tradeGreeks.premium,
+              greeks:tradeGreeks,
+              expiryLabel:expiry.label,
+              expiryDays:expiry.days,
+              underlying:sym,
+              spot,
+            }}
+            balance={balance}
+            collateralLocked={collateralLocked}
+            portfolioGreeks={portGreeks}
+            notSignedIn={notSignedIn}
+            onClose={()=>setTrade(null)}
+            onSubmit={submitOrderTicket}
+          />
         )}
       </div>
 
@@ -711,40 +521,16 @@ function OptionsPageContent() {
         </div>
       </div>
 
-      {showTradeConfirm&&trade&&tradeGreeks&&(
+      {showStrategyConfirm&&(pendingStrategyLegs??[]).length>0&&(
         <ConfirmDialog
-          title={`${trade.mode==="write"?"Write":"Buy"} ${sym} ${trade.side.toUpperCase()}`}
-          confirmLabel={submitting?"Submitting…":`Confirm ${trade.mode==="write"?"Write":"Buy"}`}
-          onConfirm={execTrade}
-          onCancel={()=>setShowTradeConfirm(false)}
-          disabled={insufficientFunds||notSignedIn||submitting||!!tradeError}
-          disabledReason={tradeError??(insufficientFunds?`Insufficient balance ${trade.mode==="write"?"to post collateral":"to cover premium"}.`:undefined)}
-        >
-          {[
-            ["Strike",fmtK(trade.row.strike)],
-            ["Expiry",expiry.label],
-            ["Contracts",String(qty)],
-            [trade.mode==="write"?"Premium received":"Total premium",`$${fmtN(tradeGreeks.premium*qty,2)}`],
-            ...(trade.mode==="write"?[["Collateral required",`$${fmtN(collateral,2)}`]]:[]),
-          ].map(([k,v])=>(
-            <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12}}>
-              <span style={{color:"var(--text-lo)"}}>{k}</span>
-              <span className="num" style={{color:"var(--text-hi)"}}>{v}</span>
-            </div>
-          ))}
-        </ConfirmDialog>
-      )}
-
-      {showStrategyConfirm&&selectedStrategy&&(
-        <ConfirmDialog
-          title={`Execute ${selectedStrategy.name}`}
+          title={`Execute ${selectedStrategy?.name??"Strategy"}`}
           confirmLabel={submitting?"Submitting…":"Confirm Execute"}
           onConfirm={execStrategy}
-          onCancel={()=>setShowStrategyConfirm(false)}
-          disabled={strategyInsufficientFunds||notSignedIn||submitting||!!tradeError}
-          disabledReason={tradeError??(strategyInsufficientFunds?`Insufficient balance — needs $${fmtN(strategyRequiredFunds,2)}, have $${fmtN(balance,2)}.`:notSignedIn?"Connect your wallet to trade.":undefined)}
+          onCancel={()=>{setShowStrategyConfirm(false);setPendingStrategyLegs(null);}}
+          disabled={notSignedIn||submitting||!!tradeError}
+          disabledReason={tradeError??(notSignedIn?"Connect your wallet to trade.":undefined)}
         >
-          {pricedLegs.map((leg,i)=>(
+          {(pendingStrategyLegs??[]).map((leg,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12}}>
               <span style={{color:leg.action==="buy"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>{leg.action} {leg.side}</span>
               <span className="num" style={{color:"var(--text-mid)"}}>K={fmtK(leg.strike)}</span>
@@ -752,15 +538,13 @@ function OptionsPageContent() {
             </div>
           ))}
           <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0 0",marginTop:6,borderTop:"1px solid var(--border-default)",fontSize:12}}>
-            <span style={{color:"var(--text-lo)"}}>{strategyNetPremium>=0?"Net Debit":"Net Credit"}</span>
-            <span className="num" style={{color:"var(--text-hi)"}}>${fmtN(Math.abs(strategyNetPremium),2)}</span>
+            <span style={{color:"var(--text-lo)"}}>
+              {netPremium(pendingStrategyLegs??[])>=0?"Net Debit":"Net Credit"}
+            </span>
+            <span className="num" style={{color:"var(--text-hi)"}}>
+              ${fmtN(Math.abs(netPremium(pendingStrategyLegs??[])),2)}
+            </span>
           </div>
-          {strategyCollateral>0&&(
-            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12}}>
-              <span style={{color:"var(--text-lo)"}}>Collateral Required</span>
-              <span className="num" style={{color:"var(--text-hi)"}}>${fmtN(strategyCollateral,2)}</span>
-            </div>
-          )}
         </ConfirmDialog>
       )}
     </div>
