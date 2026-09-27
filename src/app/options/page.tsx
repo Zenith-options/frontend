@@ -25,6 +25,9 @@ import { VolSurfaceHeatmap } from "../../components/VolSurfaceHeatmap";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { type StrategyTemplate } from "../../lib/strategies";
 import { netPremium, type PricedLeg } from "../../lib/payoff";
+import { DataGrid } from "../../components/grid";
+import type { ColumnDef } from "@tanstack/react-table";
+import type { Position } from "../../lib/api/types";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
@@ -161,6 +164,189 @@ function OptionsPageContent() {
     const v=smileVol(posVol,pos.strike/posSpot);
     return bs(posSpot,pos.strike,v,posT,pos.option_type==="call");
   };
+
+  const optionsPositionsColumns = useMemo<ColumnDef<Position, any>[]>(() => [
+    {
+      accessorKey: "underlying",
+      header: "Asset",
+      size: 90,
+      meta: {
+        filterType: "enum",
+        filterOptions: MARKETS.map(m => ({ label: m.sym, value: m.sym })),
+      },
+      cell: ({ getValue }) => <span style={{ fontWeight: 600, color: "var(--text-hi)" }}>{getValue()}</span>,
+    },
+    {
+      accessorKey: "position_type",
+      header: "Type",
+      size: 80,
+      meta: {
+        filterType: "enum",
+        filterOptions: [
+          { label: "Long", value: "long" },
+          { label: "Short", value: "short" },
+        ],
+      },
+      cell: ({ getValue }) => {
+        const val = getValue() as string;
+        const isShort = val === "short";
+        return (
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              padding: "2px 6px",
+              borderRadius: 0,
+              background: isShort ? "var(--put-dim)" : "var(--call-dim)",
+              color: isShort ? "var(--put)" : "var(--call)",
+              textTransform: "uppercase",
+            }}
+          >
+            {val}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: "option_type",
+      header: "Side",
+      size: 80,
+      meta: {
+        filterType: "enum",
+        filterOptions: [
+          { label: "Call", value: "call" },
+          { label: "Put", value: "put" },
+        ],
+      },
+      cell: ({ getValue }) => {
+        const val = getValue() as string;
+        const isCall = val === "call";
+        return (
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              padding: "2px 6px",
+              borderRadius: 0,
+              background: isCall ? "var(--call-dim)" : "var(--put-dim)",
+              color: isCall ? "var(--call)" : "var(--put)",
+              textTransform: "uppercase",
+            }}
+          >
+            {val}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: "strike",
+      header: "Strike",
+      size: 90,
+      meta: {
+        filterType: "numericRange",
+        isNumeric: true,
+      },
+      cell: ({ getValue }) => <span className="num" style={{ color: "var(--text-hi)" }}>{fmtK(getValue())}</span>,
+    },
+    {
+      accessorKey: "expiry_days",
+      header: "Expiry",
+      size: 80,
+      meta: {
+        filterType: "numericRange",
+        isNumeric: true,
+      },
+      cell: ({ getValue }) => <span style={{ color: "var(--text-mid)" }}>{getValue()}D</span>,
+    },
+    {
+      accessorKey: "contracts",
+      header: "Qty",
+      size: 70,
+      meta: {
+        filterType: "numericRange",
+        isNumeric: true,
+      },
+      cell: ({ getValue }) => <span className="num" style={{ color: "var(--text-hi)" }}>{Number(getValue()).toFixed(0)}</span>,
+    },
+    {
+      id: "delta",
+      header: "Δ",
+      size: 80,
+      accessorFn: (pos) => {
+        const sign = pos.position_type === "short" ? -1 : 1;
+        const g = positionLiveGreeks(pos);
+        return sign * g.delta * pos.contracts;
+      },
+      meta: {
+        filterType: "numericRange",
+        isNumeric: true,
+      },
+      cell: ({ getValue }) => <span className="num" style={{ color: "var(--text-hi)" }}>{(getValue() as number).toFixed(3)}</span>,
+    },
+    {
+      id: "gamma",
+      header: "Γ",
+      size: 80,
+      accessorFn: (pos) => {
+        const sign = pos.position_type === "short" ? -1 : 1;
+        const g = positionLiveGreeks(pos);
+        return sign * g.gamma * pos.contracts;
+      },
+      meta: {
+        filterType: "numericRange",
+        isNumeric: true,
+      },
+      cell: ({ getValue }) => <span className="num" style={{ color: "var(--text-hi)" }}>{(getValue() as number).toFixed(4)}</span>,
+    },
+    {
+      id: "theta",
+      header: "Θ",
+      size: 80,
+      accessorFn: (pos) => {
+        const sign = pos.position_type === "short" ? -1 : 1;
+        const g = positionLiveGreeks(pos);
+        return sign * g.theta * pos.contracts;
+      },
+      meta: {
+        filterType: "numericRange",
+        isNumeric: true,
+      },
+      cell: ({ getValue }) => <span className="num" style={{ color: "var(--put)" }}>{(getValue() as number).toFixed(4)}</span>,
+    },
+    {
+      id: "vega",
+      header: "V",
+      size: 80,
+      accessorFn: (pos) => {
+        const sign = pos.position_type === "short" ? -1 : 1;
+        const g = positionLiveGreeks(pos);
+        return sign * g.vega * pos.contracts;
+      },
+      meta: {
+        filterType: "numericRange",
+        isNumeric: true,
+      },
+      cell: ({ getValue }) => <span className="num" style={{ color: "var(--text-hi)" }}>{(getValue() as number).toFixed(3)}</span>,
+    },
+    {
+      id: "actions",
+      header: "",
+      size: 90,
+      enableSorting: false,
+      enableColumnFilter: false,
+      meta: {
+        enableExport: false,
+      },
+      cell: () => (
+        <div style={{ textAlign: "right", width: "100%" }}>
+          <Link href="/portfolio" style={{ fontSize: 10, color: "var(--brand)", textDecoration: "none" }}>
+            Manage →
+          </Link>
+        </div>
+      ),
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [spotData, spot, vol]);
 
   const atmIdx=chain.findIndex(r=>!r.itmCall);
   const tradeGreeks=trade?(trade.side==="call"?trade.row.call:trade.row.put):null;
@@ -415,51 +601,15 @@ function OptionsPageContent() {
                   <button onClick={()=>setViewTab("chain")} style={{fontSize:11,color:"var(--brand)",background:"none",border:"none",cursor:"pointer"}}>← Back to chain</button>
                 </div>
               ):(
-                <table style={{width:"100%",borderCollapse:"collapse"}}>
-                  <thead>
-                    <tr style={{borderBottom:"1px solid var(--border-default)"}}>
-                      {["Asset","Type","Side","Strike","Expiry","Qty","Δ","Γ","Θ","V",""].map(h=>(
-                        <th key={h} style={{padding:"6px 8px",fontSize:10,fontWeight:500,textTransform:"uppercase",
-                          letterSpacing:"0.05em",color:"var(--text-lo)",textAlign:"right",background:"var(--bg-raised)"}}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {backendPositions.map(pos=>{
-                      const sign=pos.position_type==="short"?-1:1;
-                      const g=positionLiveGreeks(pos);
-                      return(
-                      <tr key={pos.id} style={{borderBottom:"1px solid var(--border-subtle)"}}>
-                        <td style={{padding:"8px",fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{pos.underlying}</td>
-                        <td style={{padding:"8px 4px"}}>
-                          <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",borderRadius:0,
-                            background:pos.position_type==="short"?"var(--put-dim)":"var(--call-dim)",
-                            color:pos.position_type==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
-                            {pos.position_type}
-                          </span>
-                        </td>
-                        <td style={{padding:"8px 4px"}}>
-                          <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",borderRadius:0,
-                            background:pos.option_type==="call"?"var(--call-dim)":"var(--put-dim)",
-                            color:pos.option_type==="call"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>
-                            {pos.option_type}
-                          </span>
-                        </td>
-                        {[fmtK(pos.strike),`${pos.expiry_days}D`,pos.contracts.toFixed(0),
-                          (sign*g.delta*pos.contracts).toFixed(3),(sign*g.gamma*pos.contracts).toFixed(4),
-                          (sign*g.theta*pos.contracts).toFixed(4),(sign*g.vega*pos.contracts).toFixed(3)
-                        ].map((v,j)=>(
-                          <td key={j} className="num" style={{padding:"8px",fontSize:11,textAlign:"right",
-                            color:j===5?"var(--put)":"var(--text-hi)"}}>{v}</td>
-                        ))}
-                        <td style={{padding:"4px 8px",textAlign:"right"}}>
-                          <Link href="/portfolio" style={{fontSize:10,color:"var(--brand)",textDecoration:"none"}}>Manage →</Link>
-                        </td>
-                      </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <DataGrid<Position>
+                  data={backendPositions}
+                  columns={optionsPositionsColumns}
+                  tableId="zenith-options-positions-table"
+                  getRowId={(pos) => pos.id}
+                  exportFilename={`zenith-options-positions-${new Date().toISOString().slice(0, 10)}.csv`}
+                  ariaLabel="Open Positions Grid"
+                  maxHeight="100%"
+                />
               )}
             </div>
           )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
@@ -14,6 +14,8 @@ import { collateralRequired } from "../../lib/collateral";
 import { toCsv, downloadCsv } from "../../lib/csv";
 import { ExportButton } from "../../components/ExportButton";
 import { PortfolioRiskPanel } from "../../components/PortfolioRiskPanel";
+import { DataGrid } from "../../components/grid";
+import type { ColumnDef } from "@tanstack/react-table";
 
 interface Marked extends Position {
   spot: number;
@@ -164,6 +166,369 @@ export default function PortfolioPage() {
     }
   };
 
+  const columns = useMemo<ColumnDef<Marked, any>[]>(() => [
+    {
+      accessorKey: "underlying",
+      header: "Asset",
+      size: 90,
+      meta: {
+        filterType: "enum",
+        filterOptions: MARKETS.map(m => ({ label: m.sym, value: m.sym })),
+      },
+      cell: ({ getValue }) => <span style={{ fontWeight: 600, color: "var(--text-hi)" }}>{getValue()}</span>,
+    },
+    {
+      accessorKey: "position_type",
+      header: "Type",
+      size: 80,
+      meta: {
+        filterType: "enum",
+        filterOptions: [
+          { label: "Long", value: "long" },
+          { label: "Short", value: "short" },
+        ],
+      },
+      cell: ({ getValue }) => {
+        const val = getValue() as string;
+        const isShort = val === "short";
+        return (
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              padding: "2px 6px",
+              background: isShort ? "var(--put-dim)" : "var(--call-dim)",
+              color: isShort ? "var(--put)" : "var(--call)",
+              textTransform: "uppercase",
+            }}
+          >
+            {val}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: "option_type",
+      header: "Side",
+      size: 80,
+      meta: {
+        filterType: "enum",
+        filterOptions: [
+          { label: "Call", value: "call" },
+          { label: "Put", value: "put" },
+        ],
+      },
+      cell: ({ getValue }) => {
+        const val = getValue() as string;
+        const isCall = val === "call";
+        return (
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              padding: "2px 6px",
+              background: isCall ? "var(--call-dim)" : "var(--put-dim)",
+              color: isCall ? "var(--call)" : "var(--put)",
+              textTransform: "uppercase",
+            }}
+          >
+            {val}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: "strike",
+      header: "Strike",
+      size: 100,
+      meta: {
+        filterType: "numericRange",
+        isNumeric: true,
+      },
+      cell: ({ getValue }) => {
+        const strike = getValue() as number;
+        return (
+          <span className="num" style={{ color: "var(--text-hi)" }}>
+            {strike >= 1000 ? strike.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : strike.toFixed(4)}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: "expiry_days",
+      header: "Expiry",
+      size: 80,
+      meta: {
+        filterType: "numericRange",
+        isNumeric: true,
+      },
+      cell: ({ getValue }) => <span style={{ color: "var(--text-mid)" }}>{getValue()}D</span>,
+    },
+    {
+      accessorKey: "contracts",
+      header: "Qty",
+      size: 70,
+      meta: {
+        filterType: "numericRange",
+        isNumeric: true,
+      },
+      cell: ({ getValue }) => <span className="num" style={{ color: "var(--text-hi)" }}>{getValue()}</span>,
+    },
+    {
+      accessorKey: "collateral",
+      header: "Collateral",
+      size: 110,
+      meta: {
+        filterType: "numericRange",
+        isNumeric: true,
+        exportValue: (p) => p.collateral,
+      },
+      cell: ({ getValue }) => {
+        const c = getValue() as number;
+        return <span className="num" style={{ color: "var(--text-mid)" }}>{c > 0 ? `$${fmtN(c, 2)}` : "—"}</span>;
+      },
+    },
+    {
+      id: "entry_premium",
+      header: "Entry",
+      size: 110,
+      accessorFn: (p) => p.entry_premium * p.contracts,
+      meta: {
+        filterType: "numericRange",
+        isNumeric: true,
+        exportValue: (p) => p.entry_premium * p.contracts,
+      },
+      cell: ({ row }) => {
+        const p = row.original;
+        return (
+          <span className="num" style={{ color: "var(--text-mid)" }}>
+            {p.position_type === "short" ? "+" : ""}${fmtN(p.entry_premium * p.contracts, 2)}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: "currentPremium",
+      header: "Current",
+      size: 110,
+      meta: {
+        filterType: "numericRange",
+        isNumeric: true,
+        exportValue: (p) => p.currentPremium,
+      },
+      cell: ({ getValue }) => <span className="num" style={{ color: "var(--text-hi)" }}>${fmtN(getValue(), 2)}</span>,
+    },
+    {
+      accessorKey: "pnl",
+      header: "P&L",
+      size: 140,
+      meta: {
+        filterType: "numericRange",
+        isNumeric: true,
+        exportValue: (p) => p.pnl,
+      },
+      cell: ({ row }) => {
+        const p = row.original;
+        const isPos = p.pnl >= 0;
+        return (
+          <span className="num" style={{ fontWeight: 600, color: isPos ? "var(--call)" : "var(--put)" }}>
+            {isPos ? "+" : "−"}${fmtN(Math.abs(p.pnl), 2)}{" "}
+            <span style={{ opacity: 0.6 }}>({p.pnlPct >= 0 ? "+" : ""}{p.pnlPct.toFixed(1)}%)</span>
+          </span>
+        );
+      },
+    },
+    {
+      id: "delta",
+      header: "Δ",
+      size: 80,
+      accessorFn: (p) => (p.position_type === "short" ? -1 : 1) * p.liveDelta * p.contracts,
+      meta: {
+        filterType: "numericRange",
+        isNumeric: true,
+        exportValue: (p) => (p.position_type === "short" ? -1 : 1) * p.liveDelta * p.contracts,
+      },
+      cell: ({ getValue }) => {
+        const d = getValue() as number;
+        return <span className="num" style={{ color: "var(--text-mid)" }}>{d.toFixed(3)}</span>;
+      },
+    },
+    {
+      id: "actions",
+      header: "",
+      size: 170,
+      enableSorting: false,
+      enableColumnFilter: false,
+      meta: {
+        enableExport: false,
+      },
+      cell: ({ row }) => {
+        const p = row.original;
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end", width: "100%" }}>
+            <button
+              type="button"
+              onClick={() => setRollTargetId(rollTargetId === p.id ? null : p.id)}
+              disabled={notSignedIn}
+              style={{
+                fontSize: 10,
+                color: rollTargetId === p.id ? "var(--brand)" : "var(--text-lo)",
+                background: "none",
+                border: "1px solid var(--border-default)",
+                padding: "2px 8px",
+                cursor: notSignedIn ? "default" : "pointer",
+                opacity: notSignedIn ? 0.5 : 1,
+              }}
+            >
+              Roll
+            </button>
+            <button
+              type="button"
+              onClick={() => handleClose(p)}
+              disabled={notSignedIn}
+              style={{
+                fontSize: 10,
+                color: "var(--text-lo)",
+                background: "none",
+                border: "1px solid var(--border-default)",
+                padding: "2px 8px",
+                cursor: notSignedIn ? "default" : "pointer",
+                opacity: notSignedIn ? 0.5 : 1,
+              }}
+            >
+              {p.position_type === "short" ? "Buy to close" : "Sell to close"}
+            </button>
+          </div>
+        );
+      },
+    },
+  ], [notSignedIn, rollTargetId]);
+
+  const renderRollSubComponent = useCallback(({ row }: { row: { original: Marked } }) => {
+    const p = row.original;
+    if (rollTargetId !== p.id) return null;
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", padding: "4px 8px" }}>
+        <div>
+          <div style={{ fontSize: 10, color: "var(--text-lo)", marginBottom: 4 }}>New Strike</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => setRollStrikeOffsetPct((v) => v - 5)}
+              style={{
+                background: "var(--bg-overlay)",
+                border: "1px solid var(--border-default)",
+                color: "var(--text-mid)",
+                padding: "3px 8px",
+                cursor: "pointer",
+              }}
+            >
+              −5%
+            </button>
+            <span className="num" style={{ fontSize: 12, color: "var(--text-hi)", minWidth: 70, textAlign: "center" }}>
+              {fmtK(p.strike * (1 + rollStrikeOffsetPct / 100))}
+            </span>
+            <button
+              type="button"
+              onClick={() => setRollStrikeOffsetPct((v) => v + 5)}
+              style={{
+                background: "var(--bg-overlay)",
+                border: "1px solid var(--border-default)",
+                color: "var(--text-mid)",
+                padding: "3px 8px",
+                cursor: "pointer",
+              }}
+            >
+              +5%
+            </button>
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, color: "var(--text-lo)", marginBottom: 4 }}>New Expiry</div>
+          <div style={{ display: "flex", gap: 2 }}>
+            {EXPIRIES.map((e) => (
+              <button
+                type="button"
+                key={e.label}
+                onClick={() => setRollExpiry(e)}
+                style={{
+                  padding: "3px 7px",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 11,
+                  background: rollExpiry.label === e.label ? "var(--atm-dim)" : "transparent",
+                  color: rollExpiry.label === e.label ? "var(--atm)" : "var(--text-lo)",
+                }}
+              >
+                {e.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {rollPreview && (
+          <>
+            <div>
+              <div style={{ fontSize: 10, color: "var(--text-lo)", marginBottom: 4 }}>New Premium</div>
+              <span className="num" style={{ fontSize: 13, fontWeight: 600, color: "var(--text-hi)" }}>
+                ${fmtN(rollPreview.newPremium, 2)}
+              </span>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: "var(--text-lo)", marginBottom: 4 }}>
+                {rollPreview.netCashEffect >= 0 ? "Net Credit" : "Net Cost"}
+              </div>
+              <span
+                className="num"
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: rollPreview.netCashEffect >= 0 ? "var(--call)" : "var(--put)",
+                }}
+              >
+                ${fmtN(Math.abs(rollPreview.netCashEffect), 2)}
+              </span>
+            </div>
+          </>
+        )}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          {rollInsufficientFunds && (
+            <span style={{ fontSize: 11, color: "var(--put)" }}>Insufficient balance for the new leg</span>
+          )}
+          <button
+            type="button"
+            onClick={() => setRollTargetId(null)}
+            style={{
+              fontSize: 11,
+              color: "var(--text-lo)",
+              background: "none",
+              border: "1px solid var(--border-default)",
+              padding: "5px 12px",
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={executeRoll}
+            disabled={!!rollInsufficientFunds || rolling}
+            style={{
+              fontSize: 11,
+              color: "var(--bg)",
+              background: "var(--brand)",
+              border: "none",
+              padding: "5px 12px",
+              cursor: rollInsufficientFunds || rolling ? "default" : "pointer",
+              opacity: rollInsufficientFunds || rolling ? 0.5 : 1,
+            }}
+          >
+            {rolling ? "Rolling…" : "Confirm Roll"}
+          </button>
+        </div>
+      </div>
+    );
+  }, [rollTargetId, rollStrikeOffsetPct, rollExpiry, rollPreview, rollInsufficientFunds, rolling, executeRoll]);
+
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100vh",background:"var(--bg)",overflow:"hidden",fontFamily:"var(--font-sans)"}}>
       <AppHeader>
@@ -273,131 +638,18 @@ export default function PortfolioPage() {
                 Open the options chain →
               </Link>
             </div>
-          ) : soloPositions.length===0 ? null : (
-            <div style={{border:"1px solid var(--border-default)",background:"var(--bg-raised)",overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",minWidth:940}}>
-                <thead>
-                  <tr style={{borderBottom:"1px solid var(--border-default)"}}>
-                    {["Asset","Type","Side","Strike","Expiry","Qty","Collateral","Entry","Current","P&L","Δ",""].map(h=>(
-                      <th key={h} style={{padding:"8px 10px",fontSize:10,fontWeight:500,textTransform:"uppercase",
-                        letterSpacing:"0.05em",color:"var(--text-lo)",textAlign:"right",background:"var(--bg-overlay)"}}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {soloPositions.map(p=>{
-                    const sign = p.position_type==="short"?-1:1;
-                    return [
-                      <tr key={p.id} style={{borderBottom:"1px solid var(--border-subtle)"}}>
-                        <td style={{padding:"10px",fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>{p.underlying}</td>
-                        <td style={{padding:"10px 4px"}}>
-                          <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",
-                            background:p.position_type==="short"?"var(--put-dim)":"var(--call-dim)",
-                            color:p.position_type==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
-                            {p.position_type}
-                          </span>
-                        </td>
-                        <td style={{padding:"10px 4px"}}>
-                          <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",
-                            background:p.option_type==="call"?"var(--call-dim)":"var(--put-dim)",
-                            color:p.option_type==="call"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>
-                            {p.option_type}
-                          </span>
-                        </td>
-                        <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>{p.strike>=1000?p.strike.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}):p.strike.toFixed(4)}</td>
-                        <td style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>{p.expiry_days}D</td>
-                        <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>{p.contracts}</td>
-                        <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>{p.collateral>0?`$${fmtN(p.collateral,2)}`:"—"}</td>
-                        <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>
-                          {p.position_type==="short"?"+":""}${fmtN(p.entry_premium*p.contracts,2)}
-                        </td>
-                        <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-hi)"}}>${fmtN(p.currentPremium,2)}</td>
-                        <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",fontWeight:600,color:p.pnl>=0?"var(--call)":"var(--put)"}}>
-                          {p.pnl>=0?"+":"−"}${fmtN(Math.abs(p.pnl),2)} <span style={{opacity:0.6}}>({p.pnlPct>=0?"+":""}{p.pnlPct.toFixed(1)}%)</span>
-                        </td>
-                        <td className="num" style={{padding:"10px",fontSize:11,textAlign:"right",color:"var(--text-mid)"}}>{(sign*p.liveDelta*p.contracts).toFixed(3)}</td>
-                        <td style={{padding:"6px 10px",textAlign:"right",whiteSpace:"nowrap"}}>
-                          <button onClick={()=>setRollTargetId(rollTargetId===p.id?null:p.id)} disabled={notSignedIn} style={{
-                            fontSize:10,color:rollTargetId===p.id?"var(--brand)":"var(--text-lo)",background:"none",
-                            border:"1px solid var(--border-default)",padding:"2px 8px",cursor:notSignedIn?"default":"pointer",marginRight:6,opacity:notSignedIn?0.5:1}}>
-                            Roll
-                          </button>
-                          <button onClick={()=>handleClose(p)} disabled={notSignedIn} style={{
-                            fontSize:10,color:"var(--text-lo)",background:"none",border:"1px solid var(--border-default)",
-                            padding:"2px 8px",cursor:notSignedIn?"default":"pointer",opacity:notSignedIn?0.5:1}}>
-                            {p.position_type==="short"?"Buy to close":"Sell to close"}
-                          </button>
-                        </td>
-                      </tr>,
-                      rollTargetId===p.id && (
-                        <tr key={`${p.id}-roll`} style={{borderBottom:"1px solid var(--border-subtle)",background:"var(--bg-elevated)"}}>
-                          <td colSpan={11} style={{padding:"12px 16px"}}>
-                            <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
-                              <div>
-                                <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>New Strike</div>
-                                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                  <button onClick={()=>setRollStrikeOffsetPct(v=>v-5)} style={{
-                                    background:"var(--bg-overlay)",border:"1px solid var(--border-default)",
-                                    color:"var(--text-mid)",padding:"3px 8px",cursor:"pointer"}}>−5%</button>
-                                  <span className="num" style={{fontSize:12,color:"var(--text-hi)",minWidth:70,textAlign:"center"}}>
-                                    {fmtK(p.strike*(1+rollStrikeOffsetPct/100))}
-                                  </span>
-                                  <button onClick={()=>setRollStrikeOffsetPct(v=>v+5)} style={{
-                                    background:"var(--bg-overlay)",border:"1px solid var(--border-default)",
-                                    color:"var(--text-mid)",padding:"3px 8px",cursor:"pointer"}}>+5%</button>
-                                </div>
-                              </div>
-                              <div>
-                                <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>New Expiry</div>
-                                <div style={{display:"flex",gap:2}}>
-                                  {EXPIRIES.map(e=>(
-                                    <button key={e.label} onClick={()=>setRollExpiry(e)} style={{
-                                      padding:"3px 7px",border:"none",cursor:"pointer",fontSize:11,
-                                      background:rollExpiry.label===e.label?"var(--atm-dim)":"transparent",
-                                      color:rollExpiry.label===e.label?"var(--atm)":"var(--text-lo)"}}>{e.label}</button>
-                                  ))}
-                                </div>
-                              </div>
-                              {rollPreview && (
-                                <>
-                                  <div>
-                                    <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>New Premium</div>
-                                    <span className="num" style={{fontSize:13,fontWeight:600,color:"var(--text-hi)"}}>
-                                      ${fmtN(rollPreview.newPremium,2)}
-                                    </span>
-                                  </div>
-                                  <div>
-                                    <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>
-                                      {rollPreview.netCashEffect>=0?"Net Credit":"Net Cost"}
-                                    </div>
-                                    <span className="num" style={{fontSize:13,fontWeight:600,
-                                      color:rollPreview.netCashEffect>=0?"var(--call)":"var(--put)"}}>
-                                      ${fmtN(Math.abs(rollPreview.netCashEffect),2)}
-                                    </span>
-                                  </div>
-                                </>
-                              )}
-                              <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
-                                {rollInsufficientFunds && (
-                                  <span style={{fontSize:11,color:"var(--put)"}}>Insufficient balance for the new leg</span>
-                                )}
-                                <button onClick={()=>setRollTargetId(null)} style={{
-                                  fontSize:11,color:"var(--text-lo)",background:"none",
-                                  border:"1px solid var(--border-default)",padding:"5px 12px",cursor:"pointer"}}>Cancel</button>
-                                <button onClick={executeRoll} disabled={!!rollInsufficientFunds||rolling} style={{
-                                  fontSize:11,color:"var(--bg)",background:"var(--brand)",border:"none",
-                                  padding:"5px 12px",cursor:rollInsufficientFunds||rolling?"default":"pointer",
-                                  opacity:rollInsufficientFunds||rolling?0.5:1}}>{rolling?"Rolling…":"Confirm Roll"}</button>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      ),
-                    ];
-                  })}
-                </tbody>
-              </table>
-            </div>
+          ) : soloPositions.length === 0 ? null : (
+            <DataGrid<Marked>
+              data={soloPositions}
+              columns={columns}
+              tableId="zenith-portfolio-table"
+              getRowId={(p) => p.id}
+              isRowExpanded={(row) => rollTargetId === row.original.id}
+              renderSubComponent={renderRollSubComponent}
+              exportFilename={`zenith-positions-${new Date().toISOString().slice(0, 10)}.csv`}
+              ariaLabel="Portfolio Positions Grid"
+              maxHeight="70vh"
+            />
           )}
         </div>
       </div>
