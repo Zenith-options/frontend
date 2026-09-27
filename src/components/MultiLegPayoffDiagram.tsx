@@ -1,16 +1,20 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { combinedPayoffSeries, type PricedLeg } from "../lib/payoff";
+import { DensityOverlay, DensityToggle } from "./DensityOverlay";
 
 interface Props {
   legs: PricedLeg[];
   spot: number;
   width?: number;
   height?: number;
+  /** When given, adds a toggleable lognormal density + ±1σ/±2σ band overlay. */
+  distribution?: { vol: number; t: number };
 }
 
-export function MultiLegPayoffDiagram({ legs, spot, width = 340, height = 180 }: Props) {
+export function MultiLegPayoffDiagram({ legs, spot, width = 340, height = 180, distribution }: Props) {
+  const [showDensity, setShowDensity] = useState(false);
   const PAD = { t: 16, r: 16, b: 28, l: 52 };
   const W = width - PAD.l - PAD.r;
   const H = height - PAD.t - PAD.b;
@@ -46,12 +50,15 @@ export function MultiLegPayoffDiagram({ legs, spot, width = 340, height = 180 }:
   }, [legs, spot, W, H]);
 
   return (
-    <div style={{ width, height }}>
+    <div style={{ width, height, position: "relative" }}>
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
         <defs>
           <clipPath id="ml-chart-clip"><rect x={PAD.l} y={PAD.t} width={W} height={H} /></clipPath>
         </defs>
         <g transform={`translate(${PAD.l}, ${PAD.t})`}>
+          {distribution && showDensity && (
+            <DensityOverlay dist={{ spot, vol: distribution.vol, t: distribution.t }} lo={data.lo} hi={data.hi} W={W} H={H} />
+          )}
           <line x1={0} y1={data.zeroY} x2={W} y2={data.zeroY} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
           <path d={data.lossPath} fill="rgba(182,86,64,0.15)" clipPath="url(#ml-chart-clip)" />
           <path d={data.profitPath} fill="rgba(92,154,107,0.15)" clipPath="url(#ml-chart-clip)" />
@@ -67,6 +74,9 @@ export function MultiLegPayoffDiagram({ legs, spot, width = 340, height = 180 }:
           <rect x={0} y={0} width={W} height={H} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
         </g>
       </svg>
+      {distribution && (
+        <DensityToggle on={showDensity} onToggle={() => setShowDensity(v => !v)} style={{ top: PAD.t + 2, right: PAD.r + 2 }} />
+      )}
     </div>
   );
 }

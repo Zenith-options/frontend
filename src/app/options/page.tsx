@@ -25,6 +25,7 @@ import { VolSurfaceHeatmap } from "../../components/VolSurfaceHeatmap";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { type StrategyTemplate } from "../../lib/strategies";
 import { netPremium, type PricedLeg } from "../../lib/payoff";
+import { ProbabilityStats } from "../../components/ProbabilityStats";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
@@ -166,6 +167,10 @@ function OptionsPageContent() {
   const tradeGreeks=trade?(trade.side==="call"?trade.row.call:trade.row.put):null;
 
   const qty=Math.max(0.01,parseFloat(contracts)||1);
+
+  const tradeLegs=useMemo(():PricedLeg[]=>trade&&tradeGreeks?[{
+    side:trade.side,action:trade.mode==="write"?"sell":"buy",strike:trade.row.strike,contracts:qty,greeks:tradeGreeks,
+  }]:[],[trade,tradeGreeks,qty]);
 
   // Strategy leg pricing still uses the local bs()/smileVol() calc (with
   // the static seed vol, not the live-polled one) rather than a backend
@@ -498,7 +503,12 @@ function OptionsPageContent() {
                     )}
                   </div>
                   <div style={{marginTop:16}}>
-                    <MultiLegPayoffDiagram legs={pricedLegs} spot={spot} width={420} height={220}/>
+                    <MultiLegPayoffDiagram legs={pricedLegs} spot={spot} width={420} height={220} distribution={{vol:market.vol,t}}/>
+                  </div>
+                  {/* Same seed vol the legs above are priced with, so EV reads
+                      as the model's edge over its own premiums. */}
+                  <div style={{marginTop:12,maxWidth:420}}>
+                    <ProbabilityStats legs={pricedLegs} spot={spot} vol={market.vol} t={t}/>
                   </div>
                   <button onClick={()=>{setTradeError(null);setShowStrategyConfirm(true);}} disabled={strategyInsufficientFunds||notSignedIn} style={{marginTop:12,padding:"10px 20px",
                     background:"var(--brand)",color:"var(--bg)",border:"none",fontSize:13,fontWeight:700,
@@ -575,8 +585,12 @@ function OptionsPageContent() {
               <PayoffDiagram
                 spot={spot} strike={trade.row.strike} premium={tradeGreeks.premium}
                 isCall={trade.side==="call"} short={trade.mode==="write"} contracts={qty}
-                width={284} height={155}
+                width={284} height={155} distribution={{vol,t}}
               />
+            </div>
+
+            <div style={{padding:"14px 16px",borderBottom:"1px solid var(--border-default)"}}>
+              <ProbabilityStats legs={tradeLegs} spot={spot} vol={vol} t={t}/>
             </div>
 
             {/* Greeks grid */}

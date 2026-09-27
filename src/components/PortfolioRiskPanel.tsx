@@ -5,17 +5,28 @@ import type { Position } from "../lib/api/types";
 import { groupPositionsByUnderlying, positionsToLegs, riskProfile, stressTestPortfolio } from "../lib/risk";
 import { netPremium } from "../lib/payoff";
 import { fmtN, fmtSpot } from "../lib/pricing";
+import { expectedValue } from "../lib/probability";
 import { MultiLegPayoffDiagram } from "./MultiLegPayoffDiagram";
+import { ProbabilityStats } from "./ProbabilityStats";
 
 interface Props {
   positions: Position[];
   spots: Record<string, number>;
+  vols: Record<string, number>;
+}
+
+// Positions on one underlying can have different expiries, but the
+// payoff curve above already treats them as all expiring together — the
+// probability horizon is the nearest expiry, the first point at which
+// any of those payoffs actually becomes realized.
+function horizonYears(posns: Position[]): number {
+  return posns.length === 0 ? 0 : Math.min(...posns.map(p => p.expiry_days)) / 365;
 }
 
 const pnlColor = (v: number) => (v >= 0 ? "var(--call)" : "var(--put)");
 const fmtPnl = (v: number) => `${v >= 0 ? "+" : "−"}$${fmtN(Math.abs(v), 2)}`;
 
-export function PortfolioRiskPanel({ positions, spots }: Props) {
+export function PortfolioRiskPanel({ positions, spots, vols }: Props) {
   const groups = useMemo(() => groupPositionsByUnderlying(positions), [positions]);
   const underlyings = useMemo(() => Array.from(groups.keys()).sort(), [groups]);
   const [selected, setSelected] = useState(underlyings[0] ?? "");
@@ -29,6 +40,19 @@ export function PortfolioRiskPanel({ positions, spots }: Props) {
   const profile = useMemo(() => riskProfile(legs, spot), [legs, spot]);
   const premium = useMemo(() => netPremium(legs), [legs]);
   const stress = useMemo(() => stressTestPortfolio(positions, spots), [positions, spots]);
+  const vol = vols[activeUnderlying] ?? 0;
+  const horizon = useMemo(() => horizonYears(groups.get(activeUnderlying) ?? []), [groups, activeUnderlying]);
+
+  // EV is additive, so unlike PoP it can be summed across underlyings
+  // without assuming anything about how they're correlated.
+  const accountEv = useMemo(() => {
+    let total = 0;
+    for (const [u, posns] of Array.from(groups.entries())) {
+      const s = spots[u] ?? 0;
+      if (s > 0) total += expectedValue(positionsToLegs(posns), { spot: s, vol: vols[u] ?? 0, t: horizonYears(posns) });
+    }
+    return total;
+  }, [groups, spots, vols]);
 
   if (underlyings.length === 0) return null;
 
@@ -52,7 +76,7 @@ export function PortfolioRiskPanel({ positions, spots }: Props) {
           <div style={{ fontSize: 10, color: "var(--text-lo)", marginBottom: 8 }}>
             Combined payoff at expiry · {activeUnderlying} · all open legs
           </div>
-          <MultiLegPayoffDiagram legs={legs} spot={spot} width={420} height={200} />
+          <MultiLegPayoffDiagram legs={legs} spot={spot} width={420} height={200} distribution={{ vol, t: horizon }} />
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 160, paddingTop: 20 }}>
@@ -79,6 +103,19 @@ export function PortfolioRiskPanel({ positions, spots }: Props) {
               <div className="num" style={{ fontSize: 13, fontWeight: 600, color: s.color }}>{s.value}</div>
             </div>
           ))}
+        </div>
+
+        <div style={{ minWidth: 240, flex: "1 1 240px", paddingTop: 20 }}>
+          <ProbabilityStats
+            legs={legs} spot={spot} vol={vol} t={horizon}
+            note={`Measured at the nearest ${activeUnderlying} expiry (${Math.round(horizon * 365)}D); every leg is treated as expiring then.`}
+          />
+          <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border-subtle)" }}>
+            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-lo)", marginBottom: 2 }}>
+              Account EV · all underlyings
+            </div>
+            <div className="num" style={{ fontSize: 12, fontWeight: 600, color: pnlColor(accountEv) }}>{fmtPnl(accountEv)}</div>
+          </div>
         </div>
       </div>
 

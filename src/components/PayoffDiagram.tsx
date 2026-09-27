@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { DensityOverlay, DensityToggle } from "./DensityOverlay";
 
 interface PayoffDiagramProps {
   spot: number;
@@ -13,6 +14,8 @@ interface PayoffDiagramProps {
   width?: number;
   height?: number;
   compact?: boolean;
+  /** When given, adds a toggleable lognormal density + ±1σ/±2σ band overlay. */
+  distribution?: { vol: number; t: number };
 }
 
 export function PayoffDiagram({
@@ -25,7 +28,9 @@ export function PayoffDiagram({
   width = 340,
   height = 180,
   compact = false,
+  distribution,
 }: PayoffDiagramProps) {
+  const [showDensity, setShowDensity] = useState(false);
   const PAD = compact ? { t: 8, r: 8, b: 20, l: 40 } : { t: 16, r: 16, b: 28, l: 52 };
   const W = width  - PAD.l - PAD.r;
   const H = height - PAD.t - PAD.b;
@@ -99,6 +104,7 @@ export function PayoffDiagram({
     }));
 
     return {
+      lo, hi,
       pathData, profitPath, lossPath,
       zeroY,
       spotX: toX(spot),
@@ -113,7 +119,7 @@ export function PayoffDiagram({
   const color = isCall ? "#5C9A6B" : "#B65640";
 
   return (
-    <div style={{ width, height }}>
+    <div style={{ width, height, position: "relative" }}>
       <svg
         width={width}
         height={height}
@@ -145,6 +151,10 @@ export function PayoffDiagram({
               strokeDasharray={l.value === 0 ? "none" : "3 4"}
             />
           ))}
+
+          {distribution && showDensity && (
+            <DensityOverlay dist={{ spot, vol: distribution.vol, t: distribution.t }} lo={data.lo} hi={data.hi} W={W} H={H} />
+          )}
 
           {/* Loss area fill */}
           <path
@@ -267,6 +277,10 @@ export function PayoffDiagram({
           />
         </g>
       </svg>
+
+      {distribution && (
+        <DensityToggle on={showDensity} onToggle={() => setShowDensity(v => !v)} style={{ top: PAD.t + 2, right: PAD.r + 2 }} />
+      )}
 
       {/* Legend below */}
       {!compact && (
