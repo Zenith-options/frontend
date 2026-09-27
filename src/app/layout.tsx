@@ -4,6 +4,7 @@ import "./globals.css";
 import { StoreHydrator } from "../components/StoreHydrator";
 import { BackendDataProvider } from "../lib/context/BackendDataContext";
 import { SpotFeedProvider } from "../lib/context/SpotFeedContext";
+import { SorobanEventBridge } from "../components/SorobanEventBridge";
 
 const fraunces = Fraunces({
   subsets: ["latin"], weight: ["400","500","600","700"],
@@ -31,7 +32,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <StoreHydrator />
         <SpotFeedProvider>
-          <BackendDataProvider>{children}</BackendDataProvider>
+          <BackendDataProvider>
+            <SorobanEventBridge>
+              {children}
+            </SorobanEventBridge>
+          </BackendDataProvider>
         </SpotFeedProvider>
       </body>
     </html>
