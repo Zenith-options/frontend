@@ -23,7 +23,8 @@ import { StrategyPicker } from "../../components/StrategyPicker";
 import { MultiLegPayoffDiagram } from "../../components/MultiLegPayoffDiagram";
 import { VolSurfaceHeatmap } from "../../components/VolSurfaceHeatmap";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
-import { type StrategyTemplate } from "../../lib/strategies";
+import { StrategyBuilder, type BuilderState } from "../../components/StrategyBuilder";
+import { STRATEGY_TEMPLATES, buildStrategyLegs, legsHaveUnboundedLoss, priceLeg, type StrategyTemplate } from "../../lib/strategies";
 import { netPremium, type PricedLeg } from "../../lib/payoff";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
@@ -62,8 +63,9 @@ function OptionsPageContent() {
   const priceHistory = usePriceHistory(sym, spot);
   const [contracts, setContracts] = useState("1");
   const [viewTab, setViewTab] = useState<"chain"|"positions"|"strategies"|"surface">("chain");
-  const [selectedStrategy, setSelectedStrategy] = useState<StrategyTemplate|null>(null);
+  const [builder, setBuilder] = useState<BuilderState|null>(null);
   const [showStrategyConfirm, setShowStrategyConfirm] = useState(false);
+  const [riskAcknowledged, setRiskAcknowledged] = useState(false);
   const prevSpotRef = useRef(spot);
 
   const t = expiry.days/365;
@@ -167,21 +169,40 @@ function OptionsPageContent() {
 
   const qty=Math.max(0.01,parseFloat(contracts)||1);
 
-  // Strategy leg pricing still uses the local bs()/smileVol() calc (with
-  // the static seed vol, not the live-polled one) rather than a backend
-  // round trip per leg — out of scope for this pass, which only moved
-  // the chain table and spot ticker over. Premiums here won't always
-  // match a leg's corresponding chain row exactly once vol has drifted
-  // from its seed value.
+  // Strategy leg pricing uses the local bs()/smileVol() calc rather than
+  // a backend round trip per leg — premiums here won't always match a
+  // leg's corresponding chain row exactly. Strikes are resolved once
+  // (snapped to the chain's listed strikes) when a template is picked or
+  // the expiry changes, not on every spot tick, so a leg doesn't drift
+  // between strikes while the user is looking at it.
+  const listedStrikes=useMemo(()=>chain.map(r=>r.strike),[chain]);
+  const hasListedStrikes=listedStrikes.length>0;
+  const expiryIndex=Math.max(0,expiries.findIndex(e=>e.days===expiry.days));
+
+  const resolveTemplate=(template:StrategyTemplate):BuilderState=>{
+    const meta={templateId:template.id,name:template.name,outlook:template.outlook,volView:template.volView};
+    const built=buildStrategyLegs(template,{spot,vol,expiries,expiryIndex,contracts:1,listedStrikes});
+    if(built.error)return{source:"template",...meta,legs:[],adjusted:false,error:built.error};
+    return{source:"template",...meta,adjusted:built.adjusted,error:null,
+      legs:built.legs.map(l=>({side:l.side,action:l.action,strike:l.strike,expiryDays:l.expiryDays!,ratio:l.contracts}))};
+  };
+  const selectTemplate=(template:StrategyTemplate)=>{setRiskAcknowledged(false);setBuilder(resolveTemplate(template));};
+
+  // Re-resolve an untouched template when the selected expiry changes (its
+  // legs are defined relative to it), and once the chain's listed strikes
+  // first arrive. Hand-edited/finder-loaded legs are left alone.
+  useEffect(()=>{
+    if(builder?.source!=="template"||!builder.templateId)return;
+    const template=STRATEGY_TEMPLATES.find(t=>t.id===builder.templateId);
+    if(template)setBuilder(resolveTemplate(template));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[expiry.days,expiries,hasListedStrikes]);
+
   const pricedLegs=useMemo(():PricedLeg[]=>{
-    if(!selectedStrategy)return[];
-    return selectedStrategy.legs.map(leg=>{
-      const strike=Math.round(spot*leg.strikeOffset*10000)/10000;
-      const legVol=smileVol(market.vol,leg.strikeOffset);
-      const greeks=bs(spot,strike,legVol,t,leg.side==="call");
-      return{side:leg.side,action:leg.action,strike,contracts:qty,greeks};
-    });
-  },[selectedStrategy,spot,market.vol,t,qty]);
+    if(!builder)return[];
+    return builder.legs.map(leg=>priceLeg({...leg,contracts:qty*leg.ratio},spot,vol));
+  },[builder,spot,vol,qty]);
+  const strategyUndefinedRisk=useMemo(()=>legsHaveUnboundedLoss(pricedLegs),[pricedLegs]);
 
   const strategyNetPremium=useMemo(()=>netPremium(pricedLegs),[pricedLegs]);
   const strategyCollateral=useMemo(()=>pricedLegs.reduce((sum,leg)=>
@@ -214,15 +235,16 @@ function OptionsPageContent() {
   };
 
   const execStrategy=async()=>{
-    if(!selectedStrategy||pricedLegs.length===0||strategyInsufficientFunds||submitting)return;
+    if(!builder||pricedLegs.length===0||strategyInsufficientFunds||submitting)return;
+    if(strategyUndefinedRisk&&!riskAcknowledged)return;
     setSubmitting(true);
     setTradeError(null);
     try{
       await openBackendStrategy(pricedLegs.map(leg=>({
-        underlying:sym,strike:leg.strike,expiryDays:expiry.days,
+        underlying:sym,strike:leg.strike,expiryDays:leg.expiryDays??expiry.days,
         optionType:leg.side,positionType:leg.action==="buy"?"long":"short",contracts:leg.contracts,
       })));
-      setSelectedStrategy(null);
+      setBuilder(null);
       setShowStrategyConfirm(false);
       setViewTab("positions");
     }catch(err){
@@ -466,44 +488,19 @@ function OptionsPageContent() {
 
           {viewTab==="strategies"&&(
             <div style={{flex:1,overflowY:"auto",padding:16,display:"grid",gridTemplateColumns:"280px 1fr",gap:16}}>
-              <StrategyPicker selectedId={selectedStrategy?.id??null} onSelect={setSelectedStrategy}/>
+              <StrategyPicker selectedId={builder?.source==="template"?builder.templateId:null} onSelect={selectTemplate}/>
 
-              {selectedStrategy&&(
-                <div>
-                  <div style={{fontSize:14,fontWeight:700,color:"var(--text-hi)",marginBottom:12}}>{selectedStrategy.name}</div>
-                  {pricedLegs.map((leg,i)=>(
-                    <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",
-                      borderBottom:"1px solid var(--border-subtle)"}}>
-                      <span style={{fontSize:11,color:leg.action==="buy"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>
-                        {leg.action} {leg.side}
-                      </span>
-                      <span className="num" style={{fontSize:11,color:"var(--text-mid)"}}>K={fmtK(leg.strike)}</span>
-                      <span className="num" style={{fontSize:11,color:"var(--text-hi)"}}>${fmtN(leg.greeks.premium,4)}</span>
-                    </div>
-                  ))}
-                  <div style={{display:"flex",gap:16,marginTop:10}}>
-                    <div>
-                      <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)"}}>
-                        {strategyNetPremium>=0?"Net Debit":"Net Credit"}
-                      </div>
-                      <div className="num" style={{fontSize:13,fontWeight:600,color:strategyNetPremium>=0?"var(--put)":"var(--call)"}}>
-                        ${fmtN(Math.abs(strategyNetPremium),2)}
-                      </div>
-                    </div>
-                    {strategyCollateral>0&&(
-                      <div>
-                        <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)"}}>Collateral Required</div>
-                        <div className="num" style={{fontSize:13,fontWeight:600,color:"var(--atm)"}}>${fmtN(strategyCollateral,2)}</div>
-                      </div>
-                    )}
-                  </div>
-                  <div style={{marginTop:16}}>
-                    <MultiLegPayoffDiagram legs={pricedLegs} spot={spot} width={420} height={220}/>
-                  </div>
-                  <button onClick={()=>{setTradeError(null);setShowStrategyConfirm(true);}} disabled={strategyInsufficientFunds||notSignedIn} style={{marginTop:12,padding:"10px 20px",
-                    background:"var(--brand)",color:"var(--bg)",border:"none",fontSize:13,fontWeight:700,
-                    cursor:strategyInsufficientFunds||notSignedIn?"default":"pointer",opacity:strategyInsufficientFunds||notSignedIn?0.5:1}}>
-                    Execute {selectedStrategy.name} ({pricedLegs.length} legs)
+              {builder&&(
+                <StrategyBuilder builder={builder} pricedLegs={pricedLegs} spot={spot}
+                  listedStrikes={listedStrikes} expiries={expiries}
+                  netPremium={strategyNetPremium} collateral={strategyCollateral}
+                  onChange={next=>{setRiskAcknowledged(false);setBuilder(next);}}>
+                  <button onClick={()=>{setTradeError(null);setRiskAcknowledged(false);setShowStrategyConfirm(true);}}
+                    disabled={strategyInsufficientFunds||notSignedIn||pricedLegs.length===0} style={{marginTop:12,padding:"10px 20px",
+                    background:strategyUndefinedRisk?"var(--put)":"var(--brand)",color:"var(--bg)",border:"none",fontSize:13,fontWeight:700,
+                    cursor:strategyInsufficientFunds||notSignedIn||pricedLegs.length===0?"default":"pointer",
+                    opacity:strategyInsufficientFunds||notSignedIn||pricedLegs.length===0?0.5:1}}>
+                    Execute {builder.name} ({pricedLegs.length} legs)
                   </button>
                   {strategyInsufficientFunds&&(
                     <div style={{marginTop:6,fontSize:11,color:"var(--put)"}}>
@@ -515,7 +512,7 @@ function OptionsPageContent() {
                       Connect your wallet to trade.
                     </div>
                   )}
-                </div>
+                </StrategyBuilder>
               )}
             </div>
           )}
@@ -735,19 +732,19 @@ function OptionsPageContent() {
         </ConfirmDialog>
       )}
 
-      {showStrategyConfirm&&selectedStrategy&&(
+      {showStrategyConfirm&&builder&&(
         <ConfirmDialog
-          title={`Execute ${selectedStrategy.name}`}
+          title={`Execute ${builder.name}`}
           confirmLabel={submitting?"Submitting…":"Confirm Execute"}
           onConfirm={execStrategy}
           onCancel={()=>setShowStrategyConfirm(false)}
-          disabled={strategyInsufficientFunds||notSignedIn||submitting||!!tradeError}
-          disabledReason={tradeError??(strategyInsufficientFunds?`Insufficient balance — needs $${fmtN(strategyRequiredFunds,2)}, have $${fmtN(balance,2)}.`:notSignedIn?"Connect your wallet to trade.":undefined)}
+          disabled={strategyInsufficientFunds||notSignedIn||submitting||!!tradeError||(strategyUndefinedRisk&&!riskAcknowledged)}
+          disabledReason={tradeError??(strategyInsufficientFunds?`Insufficient balance — needs $${fmtN(strategyRequiredFunds,2)}, have $${fmtN(balance,2)}.`:notSignedIn?"Connect your wallet to trade.":strategyUndefinedRisk&&!riskAcknowledged?"Confirm you understand the undefined risk to continue.":undefined)}
         >
           {pricedLegs.map((leg,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12}}>
               <span style={{color:leg.action==="buy"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>{leg.action} {leg.side}</span>
-              <span className="num" style={{color:"var(--text-mid)"}}>K={fmtK(leg.strike)}</span>
+              <span className="num" style={{color:"var(--text-mid)"}}>K={fmtK(leg.strike)} · {leg.expiryDays??expiry.days}D</span>
               <span className="num" style={{color:"var(--text-hi)"}}>${fmtN(leg.greeks.premium*leg.contracts,2)}</span>
             </div>
           ))}
@@ -760,6 +757,13 @@ function OptionsPageContent() {
               <span style={{color:"var(--text-lo)"}}>Collateral Required</span>
               <span className="num" style={{color:"var(--text-hi)"}}>${fmtN(strategyCollateral,2)}</span>
             </div>
+          )}
+          {strategyUndefinedRisk&&(
+            <label style={{display:"flex",gap:8,alignItems:"flex-start",marginTop:12,padding:"8px 10px",
+              border:"1px solid var(--put)",background:"var(--put-dim)",fontSize:11,color:"var(--text-hi)",lineHeight:1.5,cursor:"pointer"}}>
+              <input type="checkbox" checked={riskAcknowledged} onChange={e=>setRiskAcknowledged(e.target.checked)} style={{marginTop:2}}/>
+              <span>I understand this strategy has <b style={{color:"var(--put)"}}>undefined risk</b>: losses are not capped by the other legs and can exceed the premium collected.</span>
+            </label>
           )}
         </ConfirmDialog>
       )}
