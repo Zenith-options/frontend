@@ -26,6 +26,8 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { StrategyBuilder, type BuilderState } from "../../components/StrategyBuilder";
 import { STRATEGY_TEMPLATES, buildStrategyLegs, legsHaveUnboundedLoss, priceLeg, type StrategyTemplate } from "../../lib/strategies";
 import { netPremium, type PricedLeg } from "../../lib/payoff";
+import { StrategyFinder } from "../../features/finder/StrategyFinder";
+import type { Candidate } from "../../features/finder/engine";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
@@ -62,7 +64,7 @@ function OptionsPageContent() {
   const vol = spotData?.vols[sym] ?? market.vol;
   const priceHistory = usePriceHistory(sym, spot);
   const [contracts, setContracts] = useState("1");
-  const [viewTab, setViewTab] = useState<"chain"|"positions"|"strategies"|"surface">("chain");
+  const [viewTab, setViewTab] = useState<"chain"|"positions"|"strategies"|"finder"|"surface">("chain");
   const [builder, setBuilder] = useState<BuilderState|null>(null);
   const [showStrategyConfirm, setShowStrategyConfirm] = useState(false);
   const [riskAcknowledged, setRiskAcknowledged] = useState(false);
@@ -197,6 +199,13 @@ function OptionsPageContent() {
     if(template)setBuilder(resolveTemplate(template));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[expiry.days,expiries,hasListedStrikes]);
+
+  const loadCandidate=(c:Candidate)=>{
+    setRiskAcknowledged(false);
+    setBuilder({source:"custom",templateId:c.templateId,name:`${c.name} (from finder)`,
+      outlook:c.outlook,volView:c.volView,legs:c.legs.map(l=>({...l})),adjusted:false,error:null});
+    setViewTab("strategies");
+  };
 
   const pricedLegs=useMemo(():PricedLeg[]=>{
     if(!builder)return[];
@@ -363,7 +372,7 @@ function OptionsPageContent() {
         {/* CENTER: CHAIN */}
         <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minWidth:0}}>
           <div style={{display:"flex",borderBottom:"1px solid var(--border-default)",padding:"0 8px",background:"var(--bg-raised)"}}>
-            {(["chain","positions","strategies","surface"] as const).map(tab=>(
+            {(["chain","positions","strategies","finder","surface"] as const).map(tab=>(
               <button key={tab} onClick={()=>setViewTab(tab)} style={{
                 padding:"8px 14px",border:"none",background:"transparent",cursor:"pointer",
                 fontSize:12,fontWeight:500,textTransform:"capitalize",
@@ -514,6 +523,13 @@ function OptionsPageContent() {
                   )}
                 </StrategyBuilder>
               )}
+            </div>
+          )}
+
+          {viewTab==="finder"&&(
+            <div style={{flex:1,overflowY:"auto",padding:16}}>
+              <StrategyFinder key={sym} sym={sym} spot={spot} vol={vol} strikes={listedStrikes}
+                expiries={expiries} priceHistory={priceHistory} onLoad={loadCandidate}/>
             </div>
           )}
 
