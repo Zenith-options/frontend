@@ -92,6 +92,28 @@ export interface HistoryResponse {
   stats: HistoryStats;
 }
 
+// ---------------------------------------------------------------------------
+// Paginated history — backend contract (implement when ready):
+//   GET /api/v1/history?cursor=<opaque>&limit=50&from=<ISO>&to=<ISO>
+//                       &underlying=<sym>&option_type=call|put&result=win|loss
+//   Response: HistoryPage
+// ---------------------------------------------------------------------------
+
+export interface HistoryFilters {
+  from?: string;       // ISO date string (UTC)
+  to?: string;         // ISO date string (UTC)
+  underlying?: string;
+  option_type?: OptionType;
+  result?: "win" | "loss";
+}
+
+export interface HistoryPage {
+  trades: Position[];
+  stats: HistoryStats;   // stats over ALL trades matching the filter (not just this page)
+  next_cursor: string | null;
+  total_filtered: number;
+}
+
 export interface AggregateGreeks {
   delta: number;
   gamma: number;
