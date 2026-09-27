@@ -2,8 +2,9 @@
 
 import { useEffect } from "react";
 import { useWalletStore } from "../lib/store/wallet";
+import { useCollateralSettings } from "../lib/store/collateralSettings";
 
-// wallet uses skipHydration, so both the server-rendered HTML and the
+// wallet and collateralSettings use skipHydration, so both the server-rendered HTML and the
 // client's first hydration pass use the plain default state — a store
 // with real localStorage data (e.g. an already-connected wallet) would
 // otherwise mismatch the server's empty-state markup and blow up
@@ -17,6 +18,7 @@ import { useWalletStore } from "../lib/store/wallet";
 export function StoreHydrator() {
   useEffect(() => {
     useWalletStore.persist.rehydrate();
+    useCollateralSettings.persist.rehydrate();
   }, []);
   return null;
 }

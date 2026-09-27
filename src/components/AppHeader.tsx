@@ -5,6 +5,9 @@ import { usePathname } from "next/navigation";
 import { Logo } from "./Logo";
 import { useBackendData } from "../lib/context/BackendDataContext";
 import { fmtN } from "../lib/pricing";
+import { accountCollateralSummary } from "../lib/collateral";
+import { useCollateralSettings } from "../lib/store/collateralSettings";
+import { CollateralWarningBadge, useCollateralNotifications } from "./CollateralWarning";
 
 const TABS = [
   { label: "Chain", href: "/options" },
@@ -19,6 +22,10 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const { account } = useBackendData();
   const balance = account?.balance ?? 0;
   const collateralLocked = account?.collateral_locked ?? 0;
+  const { warning, critical, notify } = useCollateralSettings();
+  const thresholds = { warning, critical };
+  const { utilization } = accountCollateralSummary(account);
+  useCollateralNotifications(utilization, thresholds, { enabled: notify, active: account !== null });
 
   return (
     <header style={{
@@ -54,6 +61,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           <span className="num" style={{ fontSize: 10, color: "var(--atm)" }}>(${fmtN(collateralLocked,2)} locked)</span>
         )}
       </Link>
+      {account && <CollateralWarningBadge utilization={utilization} thresholds={thresholds} />}
       <div style={{ width: 1, height: 20, background: "var(--border-default)" }} />
 
       {children}

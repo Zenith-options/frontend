@@ -14,6 +14,7 @@ import { collateralRequired } from "../../lib/collateral";
 import { toCsv, downloadCsv } from "../../lib/csv";
 import { ExportButton } from "../../components/ExportButton";
 import { PortfolioRiskPanel } from "../../components/PortfolioRiskPanel";
+import { CollateralDashboard } from "../../components/CollateralDashboard";
 
 interface Marked extends Position {
   spot: number;
@@ -82,6 +83,11 @@ export default function PortfolioPage() {
   }, [marked]);
 
   const soloPositions = useMemo(() => marked.filter(p => !p.strategy_id), [marked]);
+
+  const collateralItems = useMemo(
+    () => marked.map(p => ({ position: p, spot: p.spot, pnl: p.pnl, currentPremium: p.currentPremium })),
+    [marked]
+  );
 
   // Realize the position's P&L into the account balance and release any
   // collateral, then remove it. This is the one place a position actually
@@ -209,7 +215,7 @@ export default function PortfolioPage() {
           {/* Summary bar */}
           <div style={{display:"flex",gap:0,marginBottom:32,border:"1px solid var(--border-default)",background:"var(--bg-raised)"}}>
             {[
-              {label:"Available Balance", value:`$${fmtN(balance,2)}`, color:"var(--text-hi)"},
+              {label:"Balance", value:`$${fmtN(balance,2)}`, color:"var(--text-hi)"},
               {label:"Collateral Locked", value:`$${fmtN(collateralLocked,2)}`, color:"var(--atm)"},
               {label:"Unrealized P&L", value:`${totalPnl>=0?"+":"−"}$${fmtN(Math.abs(totalPnl),2)}`, color:totalPnl>=0?"var(--call)":"var(--put)"},
               {label:"Net Delta", value:`${netGreeks.delta>=0?"+":"−"}${Math.abs(netGreeks.delta).toFixed(3)}`, color:"var(--text-hi)"},
@@ -228,6 +234,8 @@ export default function PortfolioPage() {
               {actionError}
             </div>
           )}
+
+          <CollateralDashboard account={account} items={collateralItems} spots={spots} vols={vols} />
 
           {backendPositions.length>0 && <PortfolioRiskPanel positions={backendPositions} spots={spots} vols={vols} />}
 

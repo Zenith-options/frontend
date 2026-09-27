@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   closePosition,
   getPortfolioGreeks,
-  listPositions,
+  listAllPositions,
   openPosition,
   rollPosition,
   type OpenPositionParams,
@@ -32,7 +32,7 @@ export function useBackendPositions(token: string | null) {
       return;
     }
     setLoading(true);
-    Promise.all([listPositions(token, { status: "open" }), getPortfolioGreeks(token)])
+    Promise.all([listAllPositions(token, { status: "open" }), getPortfolioGreeks(token)])
       .then(([pos, g]) => {
         setPositions(pos);
         setGreeks(g);
