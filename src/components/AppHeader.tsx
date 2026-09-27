@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Logo } from "./Logo";
 import { useBackendData } from "../lib/context/BackendDataContext";
 import { fmtN } from "../lib/pricing";
+import { NotificationBell } from "./NotificationBell";
 
 const TABS = [
   { label: "Chain", href: "/options" },
@@ -54,6 +55,9 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           <span className="num" style={{ fontSize: 10, color: "var(--atm)" }}>(${fmtN(collateralLocked,2)} locked)</span>
         )}
       </Link>
+      <div style={{ width: 1, height: 20, background: "var(--border-default)" }} />
+
+      <NotificationBell />
       <div style={{ width: 1, height: 20, background: "var(--border-default)" }} />
 
       {children}

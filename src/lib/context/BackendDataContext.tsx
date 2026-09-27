@@ -8,6 +8,13 @@ import { useBackendAlerts } from "../hooks/useBackendAlerts";
 import { useWalletStore } from "../store/wallet";
 import { useHydrated } from "../useHydrated";
 import type { Account } from "../api/types";
+import { publishNotification } from "../notifications/bus";
+
+function publishFill(severity: "success" | "error", title: string, body?: string) {
+  publishNotification({ category: "fill", severity, title, body, href: "/portfolio" });
+}
+
+const errorMessage = (err: unknown) => (err instanceof Error ? err.message : "Unknown error");
 
 interface BackendData {
   account: Account | null;
@@ -65,25 +72,53 @@ export function BackendDataProvider({ children }: { children: React.ReactNode })
 
   // Every position mutation changes the account balance/collateral too —
   // refresh it here rather than trusting every call site to remember to.
+  // This is also where a fill's outcome is known, so it's where fill
+  // notifications are published from.
   const openAndRefreshAccount: typeof open = async (params) => {
-    const result = await open(params);
-    refreshAccount();
-    return result;
+    try {
+      const result = await open(params);
+      refreshAccount();
+      publishFill("success", `${params.positionType === "short" ? "Wrote" : "Bought"} ${params.contracts} ${params.underlying} ${params.optionType} @ ${params.strike}`, `${params.expiryDays}D expiry`);
+      return result;
+    } catch (err) {
+      publishFill("error", `Order failed: ${params.underlying} ${params.optionType} @ ${params.strike}`, errorMessage(err));
+      throw err;
+    }
   };
   const openStrategyAndRefreshAccount: typeof openStrategy = async (legs) => {
-    const result = await openStrategy(legs);
-    refreshAccount();
-    return result;
+    try {
+      const result = await openStrategy(legs);
+      refreshAccount();
+      publishFill("success", `Strategy filled: ${legs.length} legs on ${legs[0]?.underlying ?? ""}`,
+        legs.map(l => `${l.positionType === "short" ? "−" : "+"}${l.contracts} ${l.optionType} ${l.strike}`).join(", "));
+      return result;
+    } catch (err) {
+      publishFill("error", `Strategy failed: ${legs.length} legs on ${legs[0]?.underlying ?? ""}`, errorMessage(err));
+      throw err;
+    }
   };
   const closeAndRefreshAccount: typeof close = async (id) => {
-    const result = await close(id);
-    refreshAccount();
-    return result;
+    try {
+      const result = await close(id);
+      refreshAccount();
+      publishFill("success", `Closed ${result.underlying} ${result.option_type} @ ${result.strike}`,
+        result.realized_pnl !== null ? `Realized P&L ${result.realized_pnl >= 0 ? "+" : "−"}$${Math.abs(result.realized_pnl).toFixed(2)}` : undefined);
+      return result;
+    } catch (err) {
+      publishFill("error", "Close failed", errorMessage(err));
+      throw err;
+    }
   };
   const rollAndRefreshAccount: typeof roll = async (id, params) => {
-    const result = await roll(id, params);
-    refreshAccount();
-    return result;
+    try {
+      const result = await roll(id, params);
+      refreshAccount();
+      publishFill("success", `Rolled ${result.opened.underlying} ${result.opened.option_type} to ${result.opened.strike}`, `${result.opened.expiry_days}D expiry`);
+      return result;
+    } catch (err) {
+      publishFill("error", "Roll failed", errorMessage(err));
+      throw err;
+    }
   };
 
   return (

@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useBackendData } from "../lib/context/BackendDataContext";
 import { useWalletStore } from "../lib/store/wallet";
 import { ApiError } from "../lib/api/client";
-import { requestNotificationPermission, sendNotification } from "../lib/notify";
+import { requestNotificationPermission } from "../lib/notify";
 import type { AlertCondition } from "../lib/api/types";
 
 export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
@@ -23,17 +23,9 @@ export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
   }, [sym]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The backend checks alerts against spot server-side every 10s (this
-  // panel just polls its result via useBackendAlerts) — this only
-  // notices a triggered->true transition to fire a browser notification,
-  // it doesn't do any of its own spot-vs-target comparison anymore.
-  const seenTriggered = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    for (const a of allAlerts) {
-      if (!a.triggered || seenTriggered.current.has(a.id)) continue;
-      seenTriggered.current.add(a.id);
-      sendNotification(`${a.underlying} ${a.condition} $${a.target_price.toFixed(4)}`, "Alert triggered");
-    }
-  }, [allAlerts]);
+  // panel just polls its result via useBackendAlerts). Triggers are
+  // recorded — and shown as browser notifications, per the user's
+  // preferences — by the notification center's alert producer.
 
   const submit = async () => {
     const target = parseFloat(price);
