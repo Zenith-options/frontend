@@ -156,6 +156,11 @@
   .flash-up   { animation: flash-up   300ms ease-out; }
   .flash-down { animation: flash-down 300ms ease-out; }
 
+  /* Respect prefers-reduced-motion — disable all flash animations */
+  @media (prefers-reduced-motion: reduce) {
+    .flash-up, .flash-down { animation: none; }
+  }
+
   @keyframes shimmer {
     0%   { background-position: -400px 0; }
     100% { background-position: 400px 0; }
