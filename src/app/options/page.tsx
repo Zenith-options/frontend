@@ -25,9 +25,37 @@ import { VolSurfaceHeatmap } from "../../components/VolSurfaceHeatmap";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { type StrategyTemplate } from "../../lib/strategies";
 import { netPremium, type PricedLeg } from "../../lib/payoff";
+import { BottomSheet } from "../../components/BottomSheet";
+import { ExpandableCard } from "../../components/ExpandableCard";
+import { OrderTicket } from "../../components/OrderTicket";
+import { useIsCompact } from "../../lib/useMediaQuery";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
+
+type ChainColKey = "vol"|"oi"|"bid"|"ask"|"iv";
+interface CompactCol{key:ChainColKey;label:string;mode?:"buy"|"write";tradeable?:boolean;}
+
+// Column order for the compact (single-side) chain. Mirrors the desktop
+// reading direction of each side — calls are Vol · OI · Bid · Ask · IV and
+// puts are their mirror image — but the strike is always the sticky left
+// anchor, so either side fits a 375px screen with no horizontal page scroll.
+const COMPACT_COLS:Record<"call"|"put",CompactCol[]> = {
+  call:[
+    {key:"vol",label:"Vol"},
+    {key:"oi", label:"OI"},
+    {key:"bid",label:"Bid",mode:"write",tradeable:true},
+    {key:"ask",label:"Ask",mode:"buy",  tradeable:true},
+    {key:"iv", label:"IV"},
+  ],
+  put:[
+    {key:"iv", label:"IV"},
+    {key:"ask",label:"Ask",mode:"buy",  tradeable:true},
+    {key:"bid",label:"Bid",mode:"write",tradeable:true},
+    {key:"oi", label:"OI"},
+    {key:"vol",label:"Vol"},
+  ],
+};
 
 export default function OptionsPage() {
   return (
@@ -65,6 +93,15 @@ function OptionsPageContent() {
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyTemplate|null>(null);
   const [showStrategyConfirm, setShowStrategyConfirm] = useState(false);
   const prevSpotRef = useRef(spot);
+
+  // Compact terminal (phones + tablets in portrait): the chain shows a single
+  // side behind a Call/Put toggle, the sidebar folds into a collapsible market
+  // panel, and the ticket is presented as a bottom sheet. `false` until after
+  // hydration, so the server/desktop markup is what renders first.
+  const isCompact = useIsCompact();
+  const [chainSide, setChainSide] = useState<"call"|"put">("call");
+  const compactChainRef = useRef<HTMLDivElement|null>(null);
+  const autoScrolledRef = useRef("");
 
   const t = expiry.days/365;
 
@@ -234,17 +271,106 @@ function OptionsPageContent() {
 
   const priceDir = spot >= prevSpotRef.current;
 
+  // Compact chain: park the ATM strike mid-viewport when a symbol/expiry
+  // loads. The desktop table shows all 21 strikes at once; a phone shows ~8,
+  // so scrolling to the money is the sensible default. The key guard keeps the
+  // 4s premium refresh from yanking the user's scroll position.
+  useEffect(()=>{
+    if(!isCompact||viewTab!=="chain")return;
+    const el=compactChainRef.current;
+    if(!el||chain.length===0)return;
+    const key=`${sym}|${expiry.days}|${chainSide}|${chain.length}`;
+    if(autoScrolledRef.current===key)return;
+    const atm=el.querySelector('[data-atm="true"]') as HTMLElement|null;
+    if(!atm)return;
+    autoScrolledRef.current=key;
+    const top=atm.getBoundingClientRect().top-el.getBoundingClientRect().top+el.scrollTop;
+    el.scrollTop=Math.max(0,top-(el.clientHeight-atm.clientHeight)/2);
+  },[isCompact,viewTab,chainSide,chain,sym,expiry.days]);
+
+  const compactColValue=(row:ChainRow,key:ChainColKey,sp:number,vol:number,oi:number)=>{
+    const g=chainSide==="call"?row.call:row.put;
+    switch(key){
+      case "vol": return String(vol);
+      case "oi":  return oi.toLocaleString();
+      case "iv":  return (g.iv*100).toFixed(1);
+      case "bid": return fmtN(Math.max(0,g.premium-sp));
+      case "ask": return fmtN(g.premium+sp);
+    }
+  };
+
+  // Sidebar content — rendered as the desktop <aside> or, on compact screens,
+  // inside a collapsible market panel. Single source either way.
+  const marketPanel=(
+    <>
+      <SpotPriceChart history={priceHistory} width={212} height={70}/>
+
+      <VolSmile baseVol={vol} width={212} height={110}/>
+
+      <AlertsPanel sym={sym} spot={spot}/>
+
+      <div>
+        <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--text-lo)",marginBottom:8}}>Market</div>
+        {[["Spot",fmtSpot(spot)],["ATM IV",`${Math.round(vol*100)}%`],
+          ["25Δ Skew","-4.2%"],["OI Calls","$284K"],["OI Puts","$198K"],["P/C Ratio","0.70"]
+        ].map(([k,v])=>(
+          <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",
+            borderBottom:"1px solid var(--border-subtle)"}}>
+            <span style={{fontSize:11,color:"var(--text-lo)"}}>{k}</span>
+            <span className="num" style={{fontSize:11,color:"var(--text-hi)"}}>{v}</span>
+          </div>
+        ))}
+      </div>
+
+      <div>
+        <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--text-lo)",marginBottom:8}}>OI by Expiry</div>
+        {EXPIRIES.slice(0,4).map((e,i)=>{
+          const pct=[42,28,18,12][i];
+          return(
+            <div key={e.label} style={{marginBottom:6}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+                <span style={{fontSize:10,color:"var(--text-lo)"}}>{e.label}</span>
+                <span className="num" style={{fontSize:10,color:"var(--text-mid)"}}>{pct}%</span>
+              </div>
+              <div style={{height:3,background:"var(--bg-overlay)",borderRadius:0}}>
+                <div style={{width:`${pct}%`,height:"100%",borderRadius:0,background:`rgba(181,150,101,${0.3+pct/100*0.5})`}}/>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {hydrated&&backendPositions.length>0&&(
+        <div>
+          <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--text-lo)",marginBottom:8}}>Portfolio Greeks</div>
+          {[{g:"Δ Net Delta",v:portGreeks.delta,dp:3},{g:"Γ Net Gamma",v:portGreeks.gamma,dp:4},
+            {g:"Θ Daily",v:portGreeks.theta,dp:4},{g:"V Vega",v:portGreeks.vega,dp:3}
+          ].map(item=>(
+            <div key={item.g} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",
+              borderBottom:"1px solid var(--border-subtle)"}}>
+              <span style={{fontSize:10,color:"var(--text-lo)",fontFamily:"var(--font-mono)"}}>{item.g}</span>
+              <span className="num" style={{fontSize:11,
+                color:item.g.includes("Θ")?"var(--put)":item.v>=0?"var(--call)":"var(--put)"}}>
+                {item.v>=0?"+":"\u2212"}{Math.abs(item.v).toFixed(item.dp)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+
   return (
-    <div style={{display:"flex",flexDirection:"column",height:"100vh",background:"var(--bg)",overflow:"hidden",fontFamily:"var(--font-sans)"}}>
+    <div className="zn-shell" style={{display:"flex",flexDirection:"column",background:"var(--bg)",fontFamily:"var(--font-sans)"}}>
 
       {/* TOP BAR */}
       <AppHeader>
-        <div style={{display:"flex",gap:1}}>
+        <div className="hdr-markets" style={{display:"flex",gap:1}}>
           {sortedMarkets.map(m=>(
             <div key={m.sym} style={{display:"flex",alignItems:"center",
               background:sym===m.sym?"var(--bg-overlay)":"transparent",
               borderBottom:sym===m.sym?"2px solid var(--brand)":"2px solid transparent"}}>
-              <button onClick={()=>setSym(m.sym)} style={{
+              <button onClick={()=>setSym(m.sym)} className="zn-tap" style={{
                 padding:"4px 4px 4px 10px",border:"none",background:"none",cursor:"pointer",
                 fontSize:12,fontWeight:600,transition:"all 120ms",
                 color:sym===m.sym?"var(--text-hi)":"var(--text-mid)",
@@ -253,94 +379,42 @@ function OptionsPageContent() {
             </div>
           ))}
         </div>
-        <div style={{width:1,height:20,background:"var(--border-default)"}}/>
-        <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+        <div className="wide-only" style={{width:1,height:20,background:"var(--border-default)"}}/>
+        <div className="hdr-spot" style={{display:"flex",alignItems:"baseline",gap:8}}>
           <span className="num" style={{fontSize:16,fontWeight:600,color:"var(--text-hi)"}}>{fmtSpot(spot)}</span>
           <span className="num" style={{fontSize:12,color:priceDir?"var(--call)":"var(--put)"}}>
             {priceDir?"+":"\u2212"}{Math.abs((spot/market.price-1)*100).toFixed(2)}%
           </span>
           <span style={{fontSize:11,color:"var(--text-lo)"}}>IV {Math.round(vol*100)}%</span>
         </div>
-        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
+        <div className="hdr-alt" style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
           {expiries.map(e=>(
-            <button key={e.label} onClick={()=>setExpiry(e)} style={{
+            <button key={e.label} onClick={()=>setExpiry(e)} className="zn-tap" style={{
               padding:"3px 7px",border:"none",borderRadius:0,cursor:"pointer",fontSize:11,
               background:expiry.label===e.label?"var(--atm-dim)":"transparent",
               color:expiry.label===e.label?"var(--atm)":"var(--text-lo)",
             }}>{e.label}</button>
           ))}
-          <div style={{width:1,height:16,background:"var(--border-default)",margin:"0 8px"}}/>
+          <div className="wide-only" style={{width:1,height:16,background:"var(--border-default)",margin:"0 8px"}}/>
           <WalletConnect />
         </div>
       </AppHeader>
 
       {/* MAIN */}
-      <div style={{flex:1,display:"flex",overflow:"hidden",minHeight:0}}>
+      <div className="zn-main">
 
-        {/* LEFT SIDEBAR */}
+        {/* LEFT SIDEBAR — desktop only; below 1024px the same content lives in
+            the collapsible "Market" card at the top of the center column. */}
+        {!isCompact&&(
         <aside style={{width:236,flexShrink:0,borderRight:"1px solid var(--border-default)",
           overflowY:"auto",padding:"14px 12px",display:"flex",flexDirection:"column",gap:18,
           background:"var(--bg-raised)"}}>
-
-          <SpotPriceChart history={priceHistory} width={212} height={70}/>
-
-          <VolSmile baseVol={vol} width={212} height={110}/>
-
-          <AlertsPanel sym={sym} spot={spot}/>
-
-          <div>
-            <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--text-lo)",marginBottom:8}}>Market</div>
-            {[["Spot",fmtSpot(spot)],["ATM IV",`${Math.round(vol*100)}%`],
-              ["25Δ Skew","-4.2%"],["OI Calls","$284K"],["OI Puts","$198K"],["P/C Ratio","0.70"]
-            ].map(([k,v])=>(
-              <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",
-                borderBottom:"1px solid var(--border-subtle)"}}>
-                <span style={{fontSize:11,color:"var(--text-lo)"}}>{k}</span>
-                <span className="num" style={{fontSize:11,color:"var(--text-hi)"}}>{v}</span>
-              </div>
-            ))}
-          </div>
-
-          <div>
-            <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--text-lo)",marginBottom:8}}>OI by Expiry</div>
-            {EXPIRIES.slice(0,4).map((e,i)=>{
-              const pct=[42,28,18,12][i];
-              return(
-                <div key={e.label} style={{marginBottom:6}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                    <span style={{fontSize:10,color:"var(--text-lo)"}}>{e.label}</span>
-                    <span className="num" style={{fontSize:10,color:"var(--text-mid)"}}>{pct}%</span>
-                  </div>
-                  <div style={{height:3,background:"var(--bg-overlay)",borderRadius:0}}>
-                    <div style={{width:`${pct}%`,height:"100%",borderRadius:0,background:`rgba(181,150,101,${0.3+pct/100*0.5})`}}/>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {hydrated&&backendPositions.length>0&&(
-            <div>
-              <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--text-lo)",marginBottom:8}}>Portfolio Greeks</div>
-              {[{g:"Δ Net Delta",v:portGreeks.delta,dp:3},{g:"Γ Net Gamma",v:portGreeks.gamma,dp:4},
-                {g:"Θ Daily",v:portGreeks.theta,dp:4},{g:"V Vega",v:portGreeks.vega,dp:3}
-              ].map(item=>(
-                <div key={item.g} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",
-                  borderBottom:"1px solid var(--border-subtle)"}}>
-                  <span style={{fontSize:10,color:"var(--text-lo)",fontFamily:"var(--font-mono)"}}>{item.g}</span>
-                  <span className="num" style={{fontSize:11,
-                    color:item.g.includes("Θ")?"var(--put)":item.v>=0?"var(--call)":"var(--put)"}}>
-                    {item.v>=0?"+":"\u2212"}{Math.abs(item.v).toFixed(item.dp)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+          {marketPanel}
         </aside>
-
+        )}
         {/* CENTER: CHAIN */}
         <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minWidth:0}}>
-          <div style={{display:"flex",borderBottom:"1px solid var(--border-default)",padding:"0 8px",background:"var(--bg-raised)"}}>
+          <div className="zn-tabbar">
             {(["chain","positions","strategies","surface"] as const).map(tab=>(
               <button key={tab} onClick={()=>setViewTab(tab)} style={{
                 padding:"8px 14px",border:"none",background:"transparent",cursor:"pointer",
@@ -350,18 +424,89 @@ function OptionsPageContent() {
                 marginBottom:-1,
               }}>{tab}{tab==="positions"&&hydrated&&backendPositions.length>0?` (${backendPositions.length})`:""}</button>
             ))}
-            <div style={{marginLeft:"auto",display:"flex",alignItems:"center",paddingRight:4}}>
+            <div className="wide-only" style={{marginLeft:"auto",display:"flex",alignItems:"center",paddingRight:4}}>
               <span style={{fontSize:10,color:"var(--text-lo)"}}>{sym}-USD · {expiry.label} · {chain.length} strikes · Click ask to buy, bid to write</span>
             </div>
           </div>
 
-          {viewTab==="chain"&&(
-            <div style={{flex:1,overflowY:"auto"}}>
+          {viewTab==="chain"&&(<>
+            {/* Compact: the sidebar content, folded into one collapsible card. */}
+            {isCompact&&(
+              <div className="zn-market-card">
+                <ExpandableCard
+                  title={<span style={{fontSize:12,fontWeight:600,color:"var(--text-hi)"}}>Market · Alerts · Greeks</span>}
+                  subtitle={<span className="num">{fmtSpot(spot)} · IV {Math.round(vol*100)}%</span>}
+                  details={<div style={{display:"flex",flexDirection:"column",gap:18}}>{marketPanel}</div>}
+                />
+              </div>
+            )}
+
+            {/* Compact: Call/Put toggle — one side of the chain at a time. */}
+            {isCompact&&(
+              <div className="zn-segmented" role="group" aria-label="Option side">
+                {(["call","put"] as const).map(side=>(
+                  <button key={side} type="button" aria-pressed={chainSide===side}
+                    className={side==="call"?"is-call":"is-put"}
+                    onClick={()=>setChainSide(side)}>
+                    {side==="call"?"Calls \u25B2":"Puts \u25BC"}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div ref={compactChainRef} className="zn-scroll zn-no-scrollbar">
               {chainLoading&&chain.length===0?(
                 <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",fontSize:12,color:"var(--text-lo)"}}>
                   Loading chain…
                 </div>
-              ):(<>
+              ):isCompact?(<>
+              {/* Compact: strike (sticky) + the active side's five columns. */}
+              <div className="chain-compact">
+                <div className="chain-header chain-header-tall">
+                  <div className="ch center">Strike</div>
+                  {COMPACT_COLS[chainSide].map(col=>(
+                    <div key={col.key} className={`ch ${chainSide==="call"?"call":"put"}`}>{col.label}</div>
+                  ))}
+                </div>
+
+                {chain.map((row,i)=>{
+                  const isAtm=i===atmIdx;
+                  const sp=Math.max(0.00001,row.call.premium*0.003);
+                  const vol=Math.round(seededRandom(row.strike*1000)*200+20);
+                  const oi=Math.round(seededRandom(row.strike*1000+7)*5000+100);
+                  return(
+                    <div key={row.strike}
+                      data-atm={isAtm?"true":undefined}
+                      className={`chain-row chain-row-tall${row.itmCall?" itm-call":""}${row.itmPut?" itm-put":""}`}
+                      style={{background:isAtm?"var(--atm-dim)":undefined}}>
+                      <div className={`strike-cell${isAtm?" atm":""}`}>
+                        {fmtK(row.strike)}
+                        {isAtm&&<div style={{fontSize:7,marginTop:1,opacity:0.6}}>ATM</div>}
+                      </div>
+                      {COMPACT_COLS[chainSide].map(col=>{
+                        const text=compactColValue(row,col.key,sp,vol,oi);
+                        if(!col.tradeable){
+                          return <div key={col.key} className={`cc${col.key==="iv"?" brand":""}`}>{text}</div>;
+                        }
+                        const openTicket=()=>setTrade({row,side:chainSide,mode:col.mode!});
+                        const label=col.mode==="buy"?`Buy ${chainSide} at ${text}`:`Write ${chainSide} at ${text}`;
+                        return(
+                          <div key={col.key} className={`cc tradeable ${chainSide}`}
+                            role="button" tabIndex={0} aria-label={label}
+                            title={col.mode==="buy"?"Tap to buy":"Tap to write (sell)"}
+                            onClick={openTicket}
+                            onKeyDown={e=>{
+                              if(e.key==="Enter"||e.key===" "){e.preventDefault();openTicket();}
+                            }}>
+                            {text}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+              </>):(<>
               {/* Headers */}
               <div className="chain-header">
                 {["Vol","OI","Bid","Ask","IV"].map(h=><div key={"c"+h} className="ch call">{h}</div>)}
@@ -405,14 +550,61 @@ function OptionsPageContent() {
               })}
               </>)}
             </div>
-          )}
+          </>)}
 
           {viewTab==="positions"&&(
-            <div style={{flex:1,overflowY:"auto"}}>
+            <div className="zn-scroll zn-no-scrollbar">
               {backendPositions.length===0?(
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",gap:8}}>
                   <div style={{fontSize:13,color:"var(--text-lo)"}}>No open positions</div>
-                  <button onClick={()=>setViewTab("chain")} style={{fontSize:11,color:"var(--brand)",background:"none",border:"none",cursor:"pointer"}}>← Back to chain</button>
+                  <button onClick={()=>setViewTab("chain")} className="zn-tap" style={{fontSize:11,color:"var(--brand)",background:"none",border:"none",cursor:"pointer"}}>← Back to chain</button>
+                </div>
+              ):isCompact?(
+                // Compact: one expandable card per position — the essentials
+                // (asset, side/type, strike, size, net delta) stay on the card
+                // face, the remaining greeks live in the expanded body.
+                <div style={{padding:8}}>
+                  {backendPositions.map(pos=>{
+                    const sign=pos.position_type==="short"?-1:1;
+                    const g=positionLiveGreeks(pos);
+                    return(
+                      <ExpandableCard key={pos.id}
+                        title={<>
+                          <span style={{fontSize:13,fontWeight:600,color:"var(--text-hi)"}}>{pos.underlying}</span>
+                          <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",
+                            background:pos.position_type==="short"?"var(--put-dim)":"var(--call-dim)",
+                            color:pos.position_type==="short"?"var(--put)":"var(--call)",textTransform:"uppercase"}}>
+                            {pos.position_type}
+                          </span>
+                          <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",
+                            background:pos.option_type==="call"?"var(--call-dim)":"var(--put-dim)",
+                            color:pos.option_type==="call"?"var(--call)":"var(--put)",textTransform:"uppercase"}}>
+                            {pos.option_type}
+                          </span>
+                        </>}
+                        subtitle={<span className="num">K={fmtK(pos.strike)} · {pos.expiry_days}D · {pos.contracts.toFixed(0)}×</span>}
+                        trailing={<span className="num" style={{fontSize:13,fontWeight:600,color:"var(--text-hi)"}}>
+                          {(sign*g.delta*pos.contracts).toFixed(3)}
+                        </span>}
+                        details={<>
+                          {([["Delta",(sign*g.delta*pos.contracts).toFixed(3),"var(--text-hi)"],
+                            ["Gamma",(sign*g.gamma*pos.contracts).toFixed(4),"var(--text-hi)"],
+                            ["Theta",(sign*g.theta*pos.contracts).toFixed(4),"var(--put)"],
+                            ["Vega",(sign*g.vega*pos.contracts).toFixed(3),"var(--text-hi)"]
+                          ] as const).map(([k,v,c])=>(
+                            <div key={k} className="zn-kv">
+                              <span style={{color:"var(--text-lo)"}}>{k}</span>
+                              <span className="num" style={{color:c}}>{v}</span>
+                            </div>
+                          ))}
+                          <div className="zn-actions">
+                            <Link href="/portfolio" style={{border:"1px solid var(--border-default)",
+                              color:"var(--brand)",textDecoration:"none"}}>Manage →</Link>
+                          </div>
+                        </>}
+                      />
+                    );
+                  })}
                 </div>
               ):(
                 <table style={{width:"100%",borderCollapse:"collapse"}}>
@@ -465,7 +657,7 @@ function OptionsPageContent() {
           )}
 
           {viewTab==="strategies"&&(
-            <div style={{flex:1,overflowY:"auto",padding:16,display:"grid",gridTemplateColumns:"280px 1fr",gap:16}}>
+            <div className="zn-scroll zn-strategy-grid" style={{padding:16}}>
               <StrategyPicker selectedId={selectedStrategy?.id??null} onSelect={setSelectedStrategy}/>
 
               {selectedStrategy&&(
@@ -500,7 +692,7 @@ function OptionsPageContent() {
                   <div style={{marginTop:16}}>
                     <MultiLegPayoffDiagram legs={pricedLegs} spot={spot} width={420} height={220}/>
                   </div>
-                  <button onClick={()=>{setTradeError(null);setShowStrategyConfirm(true);}} disabled={strategyInsufficientFunds||notSignedIn} style={{marginTop:12,padding:"10px 20px",
+                  <button onClick={()=>{setTradeError(null);setShowStrategyConfirm(true);}} className="zn-tap" disabled={strategyInsufficientFunds||notSignedIn} style={{marginTop:12,padding:"10px 20px",
                     background:"var(--brand)",color:"var(--bg)",border:"none",fontSize:13,fontWeight:700,
                     cursor:strategyInsufficientFunds||notSignedIn?"default":"pointer",opacity:strategyInsufficientFunds||notSignedIn?0.5:1}}>
                     Execute {selectedStrategy.name} ({pricedLegs.length} legs)
@@ -528,7 +720,8 @@ function OptionsPageContent() {
 
           {hydrated&&backendPositions.length>0&&(
             <div style={{height:36,flexShrink:0,borderTop:"1px solid var(--border-default)",
-              display:"flex",alignItems:"center",gap:20,padding:"0 16px",background:"var(--bg-raised)"}}>
+              display:"flex",alignItems:"center",gap:20,padding:"0 16px",background:"var(--bg-raised)",
+              overflowX:"auto",whiteSpace:"nowrap",scrollbarWidth:"none"}}>
               <span style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)"}}>Portfolio</span>
               {[{g:"Net Δ",v:portGreeks.delta,dp:3},{g:"Net Γ",v:portGreeks.gamma,dp:4},
                 {g:"Daily Θ",v:portGreeks.theta,dp:4},{g:"Vega",v:portGreeks.vega,dp:3}
@@ -545,161 +738,49 @@ function OptionsPageContent() {
           )}
         </div>
 
-        {/* RIGHT PANEL */}
-        {trade&&tradeGreeks&&(
-          <aside style={{width:316,flexShrink:0,borderLeft:"1px solid var(--border-default)",
-            overflowY:"auto",background:"var(--bg-raised)",display:"flex",flexDirection:"column"}}>
-
-            <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border-default)",
-              display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
-              <div>
-                <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.1em",
-                  color:trade.side==="call"?"var(--call)":"var(--put)",marginBottom:4}}>
-                  {trade.mode==="write"?"WRITE ":"BUY "}{trade.side==="call"?"▲ CALL":"▼ PUT"}
-                </div>
-                <div style={{fontSize:15,fontWeight:700,color:"var(--text-hi)"}}>
-                  {sym} {trade.side==="call"?"Call":"Put"}
-                </div>
-                <div className="num" style={{fontSize:12,color:"var(--text-mid)"}}>
-                  K={fmtK(trade.row.strike)} · {expiry.label}
-                </div>
-              </div>
-              <button onClick={()=>setTrade(null)} style={{background:"none",border:"none",
-                color:"var(--text-lo)",fontSize:18,cursor:"pointer",lineHeight:1,padding:4}}>×</button>
-            </div>
-
-            {/* Payoff diagram */}
-            <div style={{padding:"14px 16px",borderBottom:"1px solid var(--border-default)"}}>
-              <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",
-                color:"var(--text-lo)",marginBottom:8}}>P&L at Expiry</div>
-              <PayoffDiagram
-                spot={spot} strike={trade.row.strike} premium={tradeGreeks.premium}
-                isCall={trade.side==="call"} short={trade.mode==="write"} contracts={qty}
-                width={284} height={155}
-              />
-            </div>
-
-            {/* Greeks grid */}
-            <div style={{padding:"14px 16px",borderBottom:"1px solid var(--border-default)"}}>
-              <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",
-                color:"var(--text-lo)",marginBottom:10}}>Option Greeks</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                {[{g:"Δ Delta",v:tradeGreeks.delta,dp:3,c:"var(--brand)"},
-                  {g:"Γ Gamma",v:tradeGreeks.gamma,dp:4,c:"var(--text-hi)"},
-                  {g:"Θ Theta",v:tradeGreeks.theta,dp:4,c:"var(--put)"},
-                  {g:"V Vega", v:tradeGreeks.vega, dp:3,c:"var(--atm)"},
-                ].map(item=>(
-                  <div key={item.g} style={{padding:"9px 10px",borderRadius:0,
-                    border:"1px solid var(--border-default)",background:"var(--bg-elevated)"}}>
-                    <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.08em",
-                      color:"var(--text-lo)",marginBottom:4}}>{item.g}</div>
-                    <div className="num" style={{fontSize:14,fontWeight:600,color:item.c}}>
-                      {item.v>=0?"+":"\u2212"}{Math.abs(item.v).toFixed(item.dp)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div style={{display:"flex",gap:6,marginTop:6}}>
-                {[{label:"Premium",v:`$${fmtN(tradeGreeks.premium)}`,c:"var(--text-hi)"},
-                  {label:"Impl. Vol",v:`${(tradeGreeks.iv*100).toFixed(1)}%`,c:"var(--brand)"},
-                ].map(item=>(
-                  <div key={item.label} style={{flex:1,padding:"9px 10px",borderRadius:0,
-                    border:"1px solid var(--border-default)",background:"var(--bg-elevated)"}}>
-                    <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.08em",
-                      color:"var(--text-lo)",marginBottom:4}}>{item.label}</div>
-                    <div className="num" style={{fontSize:14,fontWeight:600,color:item.c}}>{item.v}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Order entry */}
-            <div style={{padding:"14px 16px",borderBottom:"1px solid var(--border-default)"}}>
-              <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",
-                color:"var(--text-lo)",marginBottom:8}}>Order</div>
-              <div style={{marginBottom:10}}>
-                <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>Contracts</div>
-                <div style={{display:"flex",alignItems:"center",
-                  background:"var(--bg-overlay)",border:"1px solid var(--border-default)",
-                  borderRadius:0,overflow:"hidden"}}>
-                  <button onClick={()=>setContracts(c=>String(Math.max(0.01,(parseFloat(c)||1)-1)))}
-                    style={{width:36,height:40,border:"none",background:"none",color:"var(--text-mid)",fontSize:18,cursor:"pointer"}}>−</button>
-                  <input type="number" min="0.01" step="0.01" value={contracts}
-                    onChange={e=>setContracts(e.target.value)}
-                    onBlur={e=>setContracts(String(Math.max(0.01,parseFloat(e.target.value)||1)))}
-                    style={{flex:1,height:40,border:"none",background:"none",textAlign:"center",
-                      fontFamily:"var(--font-mono)",fontSize:16,color:"var(--text-hi)",outline:"none"}}/>
-                  <button onClick={()=>setContracts(c=>String((parseFloat(c)||0)+1))}
-                    style={{width:36,height:40,border:"none",background:"none",color:"var(--text-mid)",fontSize:18,cursor:"pointer"}}>+</button>
-                </div>
-              </div>
-              <div style={{background:"var(--bg-elevated)",borderRadius:0,padding:"9px 12px",marginBottom:10}}>
-                {(trade.mode==="write"?[
-                  ["Qty",`${contracts} × ${sym}`],
-                  ["Premium received",`+$${fmtN(tradeGreeks.premium*qty)}`],
-                  ["Collateral required",`$${fmtN(collateral)}`],
-                  ["Available balance",`$${fmtN(balance,2)}`],
-                ]:[
-                  ["Qty",`${contracts} × ${sym}`],
-                  ["Total premium",`$${fmtN(tradeGreeks.premium*qty)}`],
-                  ["Max loss",`$${fmtN(tradeGreeks.premium*qty)}`],
-                  ["Available balance",`$${fmtN(balance,2)}`],
-                ]).map(([k,v])=>(
-                  <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}>
-                    <span style={{fontSize:11,color:"var(--text-lo)"}}>{k}</span>
-                    <span className="num" style={{fontSize:11,
-                      color:k==="Premium received"?"var(--call)":"var(--text-hi)"}}>{v}</span>
-                  </div>
-                ))}
-                {insufficientFunds&&(
-                  <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid var(--border-default)",
-                    fontSize:11,color:"var(--put)"}}>
-                    Insufficient balance {trade.mode==="write"?"to post collateral":"to cover premium"}.
-                  </div>
-                )}
-                {notSignedIn&&(
-                  <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid var(--border-default)",
-                    fontSize:11,color:"var(--put)"}}>
-                    Connect your wallet to trade.
-                  </div>
-                )}
-                {tradeError&&(
-                  <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid var(--border-default)",
-                    fontSize:11,color:"var(--put)"}}>
-                    {tradeError}
-                  </div>
-                )}
-              </div>
-              <button onClick={()=>{setTradeError(null);setShowTradeConfirm(true);}} disabled={insufficientFunds||notSignedIn} style={{width:"100%",height:44,borderRadius:0,border:"none",
-                cursor:insufficientFunds||notSignedIn?"default":"pointer",fontSize:14,fontWeight:700,
-                opacity:insufficientFunds||notSignedIn?0.5:1,
-                background:trade.side==="call"?"var(--call)":"var(--put)",color:"var(--bg)"}}>
-                {trade.mode==="write"?"Write":"Buy"} {trade.side.toUpperCase()} @ {fmtK(trade.row.strike)}
-              </button>
-            </div>
-
-            <div style={{padding:"14px 16px"}}>
-              <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)",marginBottom:8}}>
-                Strategies using this strike
-              </div>
-              {(trade.side==="call"
-                ?["Covered Call — sell this call against stock","Bull Call Spread — buy this, sell higher strike","Long Call — pure directional bet"]
-                :["Protective Put — hedge long exposure","Bear Put Spread — buy this, sell lower strike","Cash-Secured Put — sell this for income"]
-              ).map(s=>(
-                <div key={s} style={{padding:"7px 0",borderBottom:"1px solid var(--border-subtle)",fontSize:11,color:"var(--text-mid)",cursor:"pointer",transition:"color 100ms"}}
-                  onMouseOver={e=>{(e.currentTarget as HTMLElement).style.color="var(--text-hi)"}}
-                  onMouseOut={e=>{(e.currentTarget as HTMLElement).style.color="var(--text-mid)"}}>
-                  → {s}
-                </div>
-              ))}
-            </div>
+        {/* RIGHT PANEL — desktop presentation of the shared order ticket. */}
+        {trade&&tradeGreeks&&!isCompact&&(
+          <aside className="zn-ticket-aside">
+            <OrderTicket
+              sym={sym} expiryLabel={expiry.label} side={trade.side} mode={trade.mode}
+              strike={trade.row.strike} greeks={tradeGreeks} spot={spot}
+              contracts={contracts} setContracts={setContracts} qty={qty}
+              collateral={collateral} balance={balance}
+              insufficientFunds={insufficientFunds} notSignedIn={notSignedIn}
+              tradeError={tradeError}
+              onClose={()=>setTrade(null)}
+              onConfirm={()=>{setTradeError(null);setShowTradeConfirm(true);}}
+            />
           </aside>
         )}
+
+        {/* MOBILE ORDER TICKET — the same ticket as a bottom sheet, so the
+            on-screen keyboard never buries the size/confirm controls. */}
+        {isCompact&&trade&&tradeGreeks&&(
+          <BottomSheet
+            open
+            onClose={()=>setTrade(null)}
+            suspended={showTradeConfirm}
+            ariaLabel={`${sym} ${trade.side} ${trade.mode==="write"?"write":"buy"} order ticket`}
+          >
+            <OrderTicket
+              sym={sym} expiryLabel={expiry.label} side={trade.side} mode={trade.mode}
+              strike={trade.row.strike} greeks={tradeGreeks} spot={spot}
+              contracts={contracts} setContracts={setContracts} qty={qty}
+              collateral={collateral} balance={balance}
+              insufficientFunds={insufficientFunds} notSignedIn={notSignedIn}
+              tradeError={tradeError}
+              onClose={()=>setTrade(null)}
+              onConfirm={()=>{setTradeError(null);setShowTradeConfirm(true);}}
+            />
+          </BottomSheet>
+        )}
+
       </div>
 
-      {/* STATUS BAR */}
-      <div style={{height:26,flexShrink:0,borderTop:"1px solid var(--border-subtle)",
-        display:"flex",alignItems:"center",gap:16,padding:"0 16px",background:"var(--bg)"}}>
+      {/* STATUS BAR — .zn-statusbar scrolls horizontally on narrow screens
+          (nowrap spans) and picks up the iOS home-indicator inset on mobile */}
+      <div className="zn-statusbar">
         <span style={{fontSize:10,color:"var(--text-lo)"}}>
           Black-Scholes · r=5.0% · Vol smile applied · {chain.length} strikes
         </span>

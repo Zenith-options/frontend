@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import type { PricePoint } from "../lib/usePriceHistory";
+import { useElementWidth } from "../lib/useElementWidth";
 
 interface Props {
   history: PricePoint[];
@@ -12,9 +13,16 @@ interface Props {
 const fmtPrice = (n: number) => (n >= 100 ? n.toFixed(2) : n.toFixed(4));
 
 export function SpotPriceChart({ history, width = 212, height = 90 }: Props) {
+  // Responsive: identical to the declared size inside the desktop sidebar,
+  // stretched to the container on mobile (where it lives in a full-width card).
+  // Height growth is capped at 1.5x so a full-width tablet card doesn't turn
+  // the sparkline into a 400px-tall chart.
+  const [containerRef, measured] = useElementWidth<HTMLDivElement>();
+  const w = Math.max(200, measured ?? width);
+  const h = Math.round(height * Math.min(w / width, 1.5));
   const PAD = { t: 6, r: 6, b: 6, l: 6 };
-  const W = width - PAD.l - PAD.r;
-  const H = height - PAD.t - PAD.b;
+  const W = w - PAD.l - PAD.r;
+  const H = h - PAD.t - PAD.b;
 
   const data = useMemo(() => {
     if (history.length < 2) return null;
@@ -40,7 +48,7 @@ export function SpotPriceChart({ history, width = 212, height = 90 }: Props) {
   }, [history, W, H]);
 
   return (
-    <div>
+    <div ref={containerRef} className="zn-chart">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
         <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-lo)" }}>
           Price History
@@ -49,8 +57,8 @@ export function SpotPriceChart({ history, width = 212, height = 90 }: Props) {
           {data ? `${data.pctChange >= 0 ? "+" : ""}${data.pctChange.toFixed(2)}%` : "—"}
         </span>
       </div>
-      <div style={{ width, height }}>
-        <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      <div style={{ width: w, height: h }}>
+        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
           <defs>
             <linearGradient id="spot-chart-grad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={data ? `${data.color}33` : "transparent"} />

@@ -17,6 +17,7 @@ export function WalletConnect() {
       <button
         onClick={disconnect}
         title="Click to disconnect"
+        className="zn-tap"
         style={{
           padding: "5px 12px", background: "var(--bg-elevated)", color: "var(--text-hi)",
           border: "1px solid var(--border-default)", borderRadius: 0, fontSize: 12,
@@ -35,6 +36,7 @@ export function WalletConnect() {
         href="https://www.freighter.app/"
         target="_blank"
         rel="noreferrer"
+        className="zn-tap"
         style={{
           padding: "5px 12px", background: "transparent", color: "var(--text-mid)",
           border: "1px solid var(--border-strong)", borderRadius: 0, fontSize: 12,
@@ -50,6 +52,7 @@ export function WalletConnect() {
     <button
       onClick={connect}
       disabled={status === "connecting"}
+      className="zn-tap"
       style={{
         padding: "5px 12px", background: "var(--brand)", color: "var(--bg)",
         border: "none", borderRadius: 0, fontSize: 12, fontWeight: 700,

@@ -54,18 +54,18 @@ export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
       </div>
 
       <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
-        <select value={condition} onChange={e => setCondition(e.target.value as AlertCondition)} style={{
+        <select value={condition} onChange={e => setCondition(e.target.value as AlertCondition)} className="zn-tap" style={{
           background: "var(--bg-overlay)", border: "1px solid var(--border-default)", color: "var(--text-hi)",
           fontSize: 11, padding: "4px 2px",
         }}>
           <option value="above">Above</option>
           <option value="below">Below</option>
         </select>
-        <input value={price} onChange={e => setPrice(e.target.value)} type="number" step="any" style={{
+        <input value={price} onChange={e => setPrice(e.target.value)} type="number" step="any" className="zn-tap" style={{
           flex: 1, background: "var(--bg-overlay)", border: "1px solid var(--border-default)", color: "var(--text-hi)",
           fontFamily: "var(--font-mono)", fontSize: 11, padding: "4px 6px", width: 0,
         }}/>
-        <button onClick={submit} disabled={!token} title={!token?"Connect your wallet to set alerts":undefined} style={{
+        <button onClick={submit} disabled={!token} className="zn-tap" title={!token?"Connect your wallet to set alerts":undefined} style={{
           background: "var(--brand)", color: "var(--bg)", border: "none", fontSize: 11, fontWeight: 700,
           padding: "4px 10px", cursor: token?"pointer":"default", opacity: token?1:0.5,
         }}>Add</button>
@@ -82,7 +82,7 @@ export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
               <span className="num" style={{ fontSize: 11, color: "var(--text-mid)" }}>
                 {a.condition === "above" ? "≥" : "≤"} ${a.target_price.toFixed(4)}
               </span>
-              <button onClick={() => removeAlert(a.id)} style={{
+              <button onClick={() => removeAlert(a.id)} className="zn-tap" style={{
                 background: "none", border: "none", color: "var(--text-lo)", fontSize: 14, cursor: "pointer", padding: "0 4px",
               }}>×</button>
             </div>
@@ -100,7 +100,7 @@ export function AlertsPanel({ sym, spot }: { sym: string; spot: number }) {
               <span className="num" style={{ fontSize: 11, color: "var(--atm)" }}>
                 {a.condition === "above" ? "≥" : "≤"} ${a.target_price.toFixed(4)}
               </span>
-              <button onClick={() => removeAlert(a.id)} style={{
+              <button onClick={() => removeAlert(a.id)} className="zn-tap" style={{
                 background: "none", border: "none", color: "var(--text-lo)", fontSize: 14, cursor: "pointer", padding: "0 4px",
               }}>×</button>
             </div>

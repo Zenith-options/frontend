@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useElementWidth } from "../lib/useElementWidth";
 
 interface PayoffDiagramProps {
   spot: number;
@@ -12,6 +13,10 @@ interface PayoffDiagramProps {
   contracts?: number;
   width?: number;
   height?: number;
+  /** Upper bound for the responsive (mobile) growth of the chart. */
+  maxWidth?: number;
+  /** Lower bound — below this the chart stops shrinking and its container scrolls instead. */
+  minWidth?: number;
   compact?: boolean;
 }
 
@@ -24,11 +29,21 @@ export function PayoffDiagram({
   contracts = 1,
   width = 340,
   height = 180,
+  maxWidth,
+  minWidth = 240,
   compact = false,
 }: PayoffDiagramProps) {
+  // Responsive geometry: at the declared width (i.e. every desktop call site,
+  // where the container measures exactly `width`) this is a no-op; inside a
+  // narrower container — a phone's bottom sheet, a stacked risk panel — the
+  // chart tracks the container instead of overflowing it.
+  const [containerRef, measured] = useElementWidth<HTMLDivElement>();
+  const cap = Math.max(minWidth, maxWidth ?? width);
+  const w = Math.max(minWidth, Math.min(measured ?? width, cap));
+  const h = Math.max(120, Math.round(height * (w / width)));
   const PAD = compact ? { t: 8, r: 8, b: 20, l: 40 } : { t: 16, r: 16, b: 28, l: 52 };
-  const W = width  - PAD.l - PAD.r;
-  const H = height - PAD.t - PAD.b;
+  const W = w - PAD.l - PAD.r;
+  const H = h - PAD.t - PAD.b;
 
   const data = useMemo(() => {
     // Spot price range: ±35% from current spot
@@ -107,18 +122,52 @@ export function PayoffDiagram({
       breakevenInRange: breakeven >= lo && breakeven <= hi,
       yLabels, xLabels,
       breakeven, maxPnl,
+      // Helpers for the touch/hover readout — the probe maps a position in
+      // chart user units back to a spot price and a P&L on the curve.
+      toX, toY,
+      probeAt: (x: number) => {
+        const clamped = Math.max(0, Math.min(W, x));
+        const s = lo + (clamped / W) * range;
+        return { s, p: pnl(s) };
+      },
     };
   }, [spot, strike, premium, isCall, short, contracts, W, H]);
 
   const color = isCall ? "#5C9A6B" : "#B65640";
 
+  // Touch/hover readout. `pan-y` keeps vertical page scrolling working while
+  // a horizontal drag along the chart inspects the payoff curve.
+  const [probe, setProbe] = useState<{ s: number; p: number } | null>(null);
+  const dragging = useRef(false);
+
+  const moveProbe = (clientX: number, el: SVGSVGElement) => {
+    const rect = el.getBoundingClientRect();
+    if (!rect.width) return;
+    const x = ((clientX - rect.left) * (w / rect.width)) - PAD.l;
+    if (x < -10 || x > W + 10) { setProbe(null); return; }
+    setProbe(data.probeAt(x));
+  };
+
   return (
-    <div style={{ width, height }}>
+    <div ref={containerRef} className="zn-chart" style={{ width: "100%" }}>
       <svg
-        width={width}
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        style={{ overflow: "visible" }}
+        width={w}
+        height={h}
+        viewBox={`0 0 ${w} ${h}`}
+        style={{ overflow: "visible", touchAction: "pan-y" }}
+        onPointerDown={e => {
+          dragging.current = true;
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+          moveProbe(e.clientX, e.currentTarget);
+        }}
+        onPointerMove={e => {
+          // Mouse: follow the cursor. Touch/pen: only while pressed, so a
+          // swipe that starts on the chart still scrolls the page vertically.
+          if (e.pointerType === "mouse" || dragging.current) moveProbe(e.clientX, e.currentTarget);
+        }}
+        onPointerUp={() => { dragging.current = false; }}
+        onPointerLeave={() => { if (!dragging.current) setProbe(null); }}
+        onPointerCancel={() => { dragging.current = false; setProbe(null); }}
       >
         <defs>
           <clipPath id="chart-clip">
@@ -265,6 +314,36 @@ export function PayoffDiagram({
             stroke="rgba(255,255,255,0.06)"
             strokeWidth={1}
           />
+
+          {/* Touch / hover readout (mouse hover and finger drag) */}
+          {probe && (() => {
+            const px = data.toX(probe.s);
+            const py = data.toY(probe.p);
+            const right = px < W * 0.6;
+            return (
+              <g pointerEvents="none">
+                <line x1={px} y1={0} x2={px} y2={H}
+                  stroke="rgba(245,238,220,0.35)" strokeWidth={1} />
+                <circle cx={px} cy={py} r={3.5}
+                  fill="var(--bg-elevated)" stroke={color} strokeWidth={1.5} />
+                <text
+                  x={right ? px + 6 : px - 6} y={8}
+                  textAnchor={right ? "start" : "end"}
+                  fontSize={9} fontFamily="var(--font-mono)" fill="var(--text-hi)"
+                >
+                  {probe.s >= 1 ? `$${probe.s.toFixed(2)}` : `$${probe.s.toFixed(4)}`}
+                </text>
+                <text
+                  x={right ? px + 6 : px - 6} y={20}
+                  textAnchor={right ? "start" : "end"}
+                  fontSize={9} fontFamily="var(--font-mono)"
+                  fill={probe.p >= 0 ? "#5C9A6B" : "#B65640"}
+                >
+                  {probe.p >= 0 ? "+" : "\u2212"}${Math.abs(probe.p).toFixed(2)}
+                </text>
+              </g>
+            );
+          })()}
         </g>
       </svg>
 

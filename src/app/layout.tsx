@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { StoreHydrator } from "../components/StoreHydrator";
@@ -23,6 +23,16 @@ export const metadata: Metadata = {
   description:
     "Buy and write European put and call options on XLM, BTC, ETH, and SOL. The first decentralized options protocol on Stellar Soroban.",
   keywords: ["options", "calls", "puts", "derivatives", "stellar", "soroban", "defi", "black-scholes"],
+};
+
+// viewportFit: "cover" is what makes env(safe-area-inset-*) non-zero on iOS —
+// required for the bottom sheet / bottom status bar to clear the home
+// indicator. Pinch-zoom is deliberately left enabled (accessibility).
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#14130F",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
