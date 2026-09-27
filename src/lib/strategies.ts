@@ -301,11 +301,18 @@ export function resolveStrikes(legs: StrategyLeg[], spot: number, listedStrikes:
     return { strikes: legs.map(l => Math.round(spot * l.strikeOffset * 10000) / 10000), adjusted: false };
   }
   const nearestIdx = (target: number) => {
-    let best = 0;
-    for (let i = 1; i < listed.length; i++) {
-      if (Math.abs(listed[i] - target) < Math.abs(listed[best] - target)) best = i;
+    // Binary search for the first strike >= target, then pick the closer
+    // neighbour (ties go to the lower strike).
+    let lo = 0;
+    let hi = listed.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (listed[mid] < target) lo = mid + 1;
+      else hi = mid;
     }
-    return best;
+    if (lo === 0) return 0;
+    if (lo === listed.length) return listed.length - 1;
+    return target - listed[lo - 1] <= listed[lo] - target ? lo - 1 : lo;
   };
 
   const offsets = Array.from(new Set(legs.map(l => l.strikeOffset))).sort((a, b) => a - b);

@@ -58,16 +58,23 @@ export function markToModelPnl(legs: PricedLeg[], spotAtHorizon: number, horizon
  * calendar/diagonal (there is no single "at expiry" for those).
  */
 export function strategyPnl(legs: PricedLeg[], spot: number): number {
-  if (!isMultiExpiry(legs)) return combinedPnl(legs, spot);
-  return markToModelPnl(legs, spot, nearestExpiryDays(legs)!);
+  return strategyPnlFn(legs)(spot);
+}
+
+/** `strategyPnl` with the expiry analysis done once, for hot loops. */
+export function strategyPnlFn(legs: PricedLeg[]): (spot: number) => number {
+  if (!isMultiExpiry(legs)) return s => combinedPnl(legs, s);
+  const horizon = nearestExpiryDays(legs)!;
+  return s => markToModelPnl(legs, s, horizon);
 }
 
 /** Series of {s, p} points across a spot range, for charting the combined curve. */
 export function combinedPayoffSeries(legs: PricedLeg[], loSpot: number, hiSpot: number, steps = 200) {
   const range = hiSpot - loSpot;
+  const pnl = strategyPnlFn(legs);
   return Array.from({ length: steps + 1 }, (_, i) => {
     const s = loSpot + (range * i) / steps;
-    return { s, p: strategyPnl(legs, s) };
+    return { s, p: pnl(s) };
   });
 }
 

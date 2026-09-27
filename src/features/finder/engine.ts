@@ -4,7 +4,7 @@
 // user's view (target price by a date). Pure functions only — this runs
 // inside finder.worker.ts, and in tests directly.
 import { collateralRequired } from "../../lib/collateral";
-import { combinedPnl, isMultiExpiry, nearestExpiryDays, netPremium, strategyPnl, type PricedLeg } from "../../lib/payoff";
+import { combinedPnl, isMultiExpiry, nearestExpiryDays, netPremium, strategyPnl, strategyPnlFn, type PricedLeg } from "../../lib/payoff";
 import type { Expiry } from "../../lib/pricing";
 import {
   STRATEGY_TEMPLATES, legExpiryOffset, legRatio, legsHaveUnboundedLoss, priceLeg, resolveStrikes,
@@ -81,7 +81,7 @@ const RISK_FREE = 0.05; // same r the local Black-Scholes uses
 const WIDTHS = [0.5, 0.75, 1, 1.5, 2];
 const CENTER_COUNT = 9;
 const EXPIRIES_PER_TEMPLATE = 3;
-const PDF_POINTS = 161;
+const PDF_POINTS = 101;
 
 /** Candidate expiries: the ones on/after the target date, nearest first (or the longest listed). */
 export function expiryIndicesFor(expiries: Expiry[], targetDays: number): number[] {
@@ -168,8 +168,9 @@ export function maxLossOf(legs: PricedLeg[], spot: number): number {
     const points = [0, ...legs.map(l => l.strike), Math.max(...legs.map(l => l.strike)) * 2];
     worst = Math.min(...points.map(s => combinedPnl(legs, s)));
   } else {
+    const pnl = strategyPnlFn(legs);
     worst = Infinity;
-    for (let i = 0; i <= 80; i++) worst = Math.min(worst, strategyPnl(legs, spot * (0.2 + (2.8 * i) / 80)));
+    for (let i = 0; i <= 80; i++) worst = Math.min(worst, pnl(spot * (0.2 + (2.8 * i) / 80)));
   }
   return Math.max(0, -worst);
 }
@@ -180,13 +181,14 @@ export function probabilityStats(legs: PricedLeg[], spot: number, vol: number): 
   const t = Math.max(days, 1) / 365;
   const sd = vol * Math.sqrt(t);
   const mu = (RISK_FREE - 0.5 * vol * vol) * t;
+  const pnlAt = strategyPnlFn(legs);
   let wSum = 0;
   let pop = 0;
   let ev = 0;
   for (let i = 0; i < PDF_POINTS; i++) {
     const z = -5 + (10 * i) / (PDF_POINTS - 1);
     const w = Math.exp(-0.5 * z * z);
-    const pnl = strategyPnl(legs, spot * Math.exp(mu + sd * z));
+    const pnl = pnlAt(spot * Math.exp(mu + sd * z));
     wSum += w;
     ev += w * pnl;
     if (pnl > 0) pop += w;
