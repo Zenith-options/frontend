@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { combinedPayoffSeries, type PricedLeg } from "../lib/payoff";
+import { useQuant } from "../lib/hooks/useQuant";
+import type { PricedLeg } from "../lib/payoff";
 
 interface Props {
   legs: PricedLeg[];
@@ -15,12 +16,18 @@ export function MultiLegPayoffDiagram({ legs, spot, width = 340, height = 180 }:
   const W = width - PAD.l - PAD.r;
   const H = height - PAD.t - PAD.b;
 
-  const data = useMemo(() => {
-    const lo = spot * 0.65;
-    const hi = spot * 1.35;
-    const range = hi - lo;
-    const series = combinedPayoffSeries(legs, lo, hi);
+  const lo = spot * 0.65;
+  const hi = spot * 1.35;
 
+  const { data: series } = useQuant(
+    "payoffSeries",
+    legs.length > 0 ? { legs, loSpot: lo, hiSpot: hi } : null,
+  );
+
+  const data = useMemo(() => {
+    if (!series || series.length === 0) return null;
+
+    const range = hi - lo;
     const maxPnl = series.reduce((m, pt) => Math.max(m, pt.p), 0);
     const minPnl = series.reduce((m, pt) => Math.min(m, pt.p), 0);
     const yRange = Math.max(maxPnl - minPnl, 0.01) * 1.3;
@@ -43,7 +50,13 @@ export function MultiLegPayoffDiagram({ legs, spot, width = 340, height = 180 }:
       lo, hi, pathData, profitPath, lossPath, zeroY, spotX: toX(spot), maxPnl, minPnl,
       yLabels: [minPnl, 0, maxPnl].map(v => ({ v, y: toY(v) })),
     };
-  }, [legs, spot, W, H]);
+  }, [series, lo, hi, W, H, spot]);
+
+  if (!data) {
+    return <div style={{ width, height, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ fontSize: 10, color: "var(--text-lo)" }}>Computing…</span>
+    </div>;
+  }
 
   return (
     <div style={{ width, height }}>

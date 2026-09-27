@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import type { Position } from "../lib/api/types";
-import { groupPositionsByUnderlying, positionsToLegs, riskProfile, stressTestPortfolio } from "../lib/risk";
+import { groupPositionsByUnderlying, positionsToLegs } from "../lib/risk";
 import { netPremium } from "../lib/payoff";
 import { fmtN, fmtSpot } from "../lib/pricing";
 import { MultiLegPayoffDiagram } from "./MultiLegPayoffDiagram";
+import { useQuant } from "../lib/hooks/useQuant";
 
 interface Props {
   positions: Position[];
@@ -23,12 +24,22 @@ export function PortfolioRiskPanel({ positions, spots }: Props) {
 
   const legs = useMemo(
     () => (activeUnderlying ? positionsToLegs(groups.get(activeUnderlying) ?? []) : []),
-    [groups, activeUnderlying]
+    [groups, activeUnderlying],
   );
   const spot = spots[activeUnderlying] ?? 0;
-  const profile = useMemo(() => riskProfile(legs, spot), [legs, spot]);
   const premium = useMemo(() => netPremium(legs), [legs]);
-  const stress = useMemo(() => stressTestPortfolio(positions, spots), [positions, spots]);
+
+  // Offload riskProfile to worker
+  const { data: profile } = useQuant(
+    "riskProfile",
+    legs.length > 0 && spot > 0 ? { legs, spot } : null,
+  );
+
+  // Offload stressTestPortfolio to worker
+  const { data: stress } = useQuant(
+    "stressTest",
+    positions.length > 0 ? { positions, spots } : null,
+  );
 
   if (underlyings.length === 0) return null;
 
@@ -60,17 +71,23 @@ export function PortfolioRiskPanel({ positions, spots }: Props) {
             { label: "Net Premium", value: `${premium >= 0 ? "−" : "+"}$${fmtN(Math.abs(premium), 2)}`, color: "var(--text-hi)" },
             {
               label: "Max Profit",
-              value: profile.maxProfitUnlimited ? "Unlimited" : `+$${fmtN(profile.maxProfit, 2)}`,
+              value: profile
+                ? profile.maxProfitUnlimited ? "Unlimited" : `+$${fmtN(profile.maxProfit, 2)}`
+                : "…",
               color: "var(--call)",
             },
             {
               label: "Max Loss",
-              value: profile.maxLossUnlimited ? "Unlimited" : `−$${fmtN(Math.abs(profile.maxLoss), 2)}`,
+              value: profile
+                ? profile.maxLossUnlimited ? "Unlimited" : `−$${fmtN(Math.abs(profile.maxLoss), 2)}`
+                : "…",
               color: "var(--put)",
             },
             {
-              label: profile.breakevens.length === 1 ? "Breakeven" : "Breakevens",
-              value: profile.breakevens.length === 0 ? "—" : profile.breakevens.map(b => fmtSpot(b)).join(" / "),
+              label: profile && profile.breakevens.length === 1 ? "Breakeven" : "Breakevens",
+              value: !profile ? "…"
+                : profile.breakevens.length === 0 ? "—"
+                : profile.breakevens.map(b => fmtSpot(b)).join(" / "),
               color: "var(--text-hi)",
             },
           ].map(s => (
@@ -87,7 +104,7 @@ export function PortfolioRiskPanel({ positions, spots }: Props) {
           Stress test · account-wide P&amp;L if every underlying moved this much and every position ran to expiry
         </div>
         <div style={{ display: "flex", gap: 0, overflowX: "auto" }}>
-          {stress.map(r => (
+          {stress ? stress.map(r => (
             <div key={r.shock} style={{
               flex: "1 0 90px", padding: "8px 10px", textAlign: "center",
               borderLeft: "1px solid var(--border-subtle)",
@@ -100,7 +117,9 @@ export function PortfolioRiskPanel({ positions, spots }: Props) {
                 {fmtPnl(r.totalPnl)}
               </div>
             </div>
-          ))}
+          )) : (
+            <div style={{ fontSize: 10, color: "var(--text-lo)", padding: 8 }}>Computing…</div>
+          )}
         </div>
       </div>
     </div>
