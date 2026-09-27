@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
@@ -9,6 +10,8 @@ import { useHydrated } from "../../lib/useHydrated";
 import { fmtN, fmtK } from "../../lib/pricing";
 import { toCsv, downloadCsv } from "../../lib/csv";
 import { ExportButton } from "../../components/ExportButton";
+import { StatementsPanel } from "../../components/StatementsPanel";
+import { useBackendData } from "../../lib/context/BackendDataContext";
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
@@ -20,7 +23,11 @@ function fmtDate(iso: string | null) {
 export default function HistoryPage() {
   const hydrated = useHydrated();
   const token = useWalletStore(s => s.token);
-  const { trades, stats } = useBackendHistory(hydrated ? token : null);
+  const effectiveToken = hydrated ? token : null;
+  const { trades, stats } = useBackendHistory(effectiveToken);
+  const address = useWalletStore(s => s.address);
+  const { positions: openPositions } = useBackendData();
+  const [showStatements, setShowStatements] = useState(false);
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100vh",background:"var(--bg)",overflow:"hidden",fontFamily:"var(--font-sans)"}}>
@@ -39,6 +46,10 @@ export default function HistoryPage() {
                 {!token ? "Connect your wallet to see your trade history." : `${trades.length} closed trade${trades.length===1?"":"s"}`}
               </p>
             </div>
+            <div style={{display:"flex",gap:8}}>
+            {effectiveToken && (
+              <ExportButton label={showStatements?"Hide statements":"Statements"} onClick={()=>setShowStatements(v=>!v)}/>
+            )}
             {trades.length>0 && (
               <ExportButton onClick={()=>downloadCsv(
                 `zenith-history-${new Date().toISOString().slice(0,10)}.csv`,
@@ -58,7 +69,12 @@ export default function HistoryPage() {
                 ])
               )}/>
             )}
+            </div>
           </div>
+
+          {showStatements && effectiveToken && (
+            <StatementsPanel token={effectiveToken} walletAddress={hydrated?address:null} openPositions={openPositions}/>
+          )}
 
           {stats.trade_count>0 && (
             <div style={{display:"flex",gap:0,marginBottom:24,border:"1px solid var(--border-default)",background:"var(--bg-raised)"}}>

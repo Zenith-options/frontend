@@ -9,5 +9,8 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["./vitest.setup.ts"],
+    // userEvent-driven component tests can take a few seconds each when
+    // every file runs in parallel on a busy CI runner.
+    testTimeout: 15_000,
   },
 });

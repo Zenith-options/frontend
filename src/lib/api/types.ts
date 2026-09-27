@@ -90,6 +90,8 @@ export interface HistoryStats {
 export interface HistoryResponse {
   trades: Position[];
   stats: HistoryStats;
+  /** Whether a further `offset` page exists. */
+  has_more?: boolean;
 }
 
 export interface AggregateGreeks {
