@@ -1,0 +1,28 @@
+{
+  "ci": {
+    "collect": {
+      "startServerCommand": "npm run start -- -p 3200",
+      "startServerReadyPattern": "Ready",
+      "url": [
+        "http://localhost:3200/",
+        "http://localhost:3200/options",
+        "http://localhost:3200/portfolio",
+        "http://localhost:3200/history"
+      ],
+      "numberOfRuns": 3,
+      "settings": {
+        "formFactor": "mobile",
+        "screenEmulation": { "mobile": true, "width": 375, "height": 812, "deviceScaleFactor": 3, "disabled": false },
+        "onlyCategories": ["performance", "accessibility"]
+      }
+    },
+    "assert": {
+      "assertions": {
+        "cumulative-layout-shift": ["error", { "maxNumericValue": 0.05, "aggregationMethod": "median" }],
+        "categories:performance": ["error", { "minScore": 0.85, "aggregationMethod": "median" }],
+        "target-size": ["warn", { "minScore": 1 }]
+      }
+    },
+    "upload": { "target": "filesystem", "outputDir": "./lhci-report" }
+  }
+}
