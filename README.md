@@ -47,6 +47,7 @@ preview chain and the options chain's client-side BS fallback will render.
 ```bash
 npm run build   # production build
 npm run lint     # next lint
+npm test        # Vitest + React Testing Library (npm run test:watch to watch)
 ```
 
 ## Pages
@@ -57,6 +58,10 @@ npm run lint     # next lint
 | `/options` | The terminal: chain, positions, strategy builder, vol surface |
 | `/portfolio` | Open positions marked-to-market, roll, close, CSV export, portfolio-wide risk panel |
 | `/history` | Full trade ledger (opens + closes) with realized P&L stats |
+| `/notifications` | Full notification history with filters, and per-category browser notification preferences |
+
+Every page's header also has a **watchlist** menu and a **notification
+bell** (see below).
 
 The `/options` page is tabbed:
 
@@ -64,9 +69,20 @@ The `/options` page is tabbed:
   bid to write (sell) and collect premium.
 - **Positions** — quick view of open positions for the selected symbol;
   "Manage →" links to `/portfolio` for the actual close/roll actions.
-- **Strategies** — templated multi-leg trades (straddle, bull call spread,
-  bear put spread, iron condor) with a combined payoff diagram, executed
-  atomically.
+- **Strategies** — 15 templated multi-leg structures (straddle, strangles,
+  verticals, butterflies, iron condor/butterfly, collar, ratio spreads,
+  call calendar/diagonal, jade lizard), each tagged with outlook, vol view
+  and defined/undefined risk. Picking one resolves it onto the chain's
+  listed strikes in an editable builder (flip legs, step strikes, per-leg
+  expiry, add/remove legs) with a combined payoff diagram; legs execute
+  atomically. Undefined-risk positions show a warning and need an explicit
+  acknowledgement to execute. Calendars/diagonals chart P&L at the nearest
+  expiry with the longer-dated leg marked to model.
+- **Finder** — state an outlook, a target price (drag the marker on the
+  chart) and date, a max loss and a budget; it ranks candidate strategies
+  from the library across listed strikes/expiries by probability of
+  profit, P&L at target and return on risk, in a Web Worker. "Load →"
+  opens a candidate in the builder.
 - **Surface** — an IV heatmap across strikes and expiries, with a simple
   term-structure model (skew dampens for longer-dated options).
 
@@ -79,7 +95,11 @@ src/
 │   ├── page.tsx          # Home
 │   ├── options/          # Chain / Positions / Strategies / Surface
 │   ├── portfolio/        # Open positions, roll, close
-│   └── history/          # Trade ledger
+│   ├── history/          # Trade ledger
+│   └── notifications/    # Notification history + preferences
+├── features/
+│   └── finder/           # Strategy finder: engine.ts (generate/prune/score),
+│                         # finder.worker.ts, useStrategyFinder, UI
 ├── components/           # UI components (charts, dialogs, header, etc.)
 └── lib/
     ├── api/              # Typed backend client: one file per domain
@@ -101,7 +121,12 @@ src/
     │                       # underlying into one payoff curve, stress-tests the
     │                       # account across a spot-shock grid
     ├── volSurface.ts      # Term-structure-aware IV surface grid
-    ├── strategies.ts      # Multi-leg strategy templates
+    ├── strategies.ts      # Strategy templates + metadata, dev-time validation,
+    │                      # strike resolution onto listed strikes
+    ├── notifications/     # Event bus, per-wallet IndexedDB store, producers,
+    │                      # browser-notification prefs, server WS contract
+    ├── watchlists/        # Multi-list watchlists: provider (server or local
+    │                      # mode, optimistic updates) and pure list ops
     ├── csv.ts / notify.ts # CSV export, browser Notification wrapper
     ├── useHydrated.ts     # SSR-hydration-safety hook (see below) — still relevant for wallet.ts
     └── usePriceHistory.ts # In-memory spot sparkline buffer
@@ -123,9 +148,39 @@ reads wallet-gated state follows the same pattern. If you add a new
 component that reads the wallet token to fetch or render backend data, it
 needs the same guard.
 
+### Notifications
+
+Producers publish to an event bus (`src/lib/notifications/bus.ts`) and
+`NotificationsProvider` persists each event in IndexedDB per wallet (last
+500), deduplicated by `dedupeKey` so several tabs observing the same alert
+record it once; other tabs are synced over `BroadcastChannel`. Producers:
+fills/closes/rolls (from `BackendDataContext`), triggered alerts, expiry
+reminders (24h and 1h), session expiry/sign-out, and spot-feed outages.
+Server-pushed notifications aren't implemented; the intended
+`/api/v1/ws/notifications` frame format is in `serverContract.ts`.
+
+### Watchlists
+
+Favorites (the backend's existing single-set `/api/v1/watchlist`) still
+drive `StarButton` and market-tab ordering, and appear as the first list.
+Additional named lists use a multi-list API documented in
+`src/lib/api/watchlists.ts`, which the backend doesn't serve yet. Until it
+does (`GET /api/v1/watchlists` 404s), lists are saved in `localStorage`
+per wallet and are uploaded automatically the first time the server
+answers with no lists. Each row shows live spot, change since the session
+started (there's no server-side 24h change), ATM IV and a sparkline from
+the WebSocket feed's session buffer.
+
+## Testing
+
+Vitest with jsdom, React Testing Library, MSW for network tests and
+`fake-indexeddb`. Tests live next to the code as `*.test.ts(x)`. Strategy
+payoffs and finder rankings are snapshot-tested; `vitest run -u` updates
+snapshots after an intentional change.
+
 ## Known gaps
 
-- No test suite.
+- No CI workflow runs the tests yet.
 - No on-chain/Soroban integration — the backend is a paper-trading API, not
   a wallet transaction signer against the contracts.
 - Wallet sign-in (`signBlob` → verify → bearer token) hasn't been manually
