@@ -45,8 +45,10 @@ alerts/live spot to actually load — without it, only the home page's local
 preview chain and the options chain's client-side BS fallback will render.
 
 ```bash
-npm run build   # production build
-npm run lint     # next lint
+npm run build      # production build
+npm run lint       # next lint
+npm run typecheck  # tsc --noEmit
+npm test           # vitest (jsdom + React Testing Library)
 ```
 
 ## Pages
@@ -57,6 +59,9 @@ npm run lint     # next lint
 | `/options` | The terminal: chain, positions, strategy builder, vol surface |
 | `/portfolio` | Open positions marked-to-market, roll, close, CSV export, portfolio-wide risk panel |
 | `/history` | Full trade ledger (opens + closes) with realized P&L stats |
+| `/compete` | Competition listing, grouped by phase (live / upcoming / past) |
+| `/compete/[id]` | Opt-in, live leaderboard, personal rank card, and final results |
+| `/compete/[id]/rules` | The config-rendered rules page for one competition |
 
 The `/options` page is tabbed:
 
@@ -70,6 +75,58 @@ The `/options` page is tabbed:
 - **Surface** — an IV heatmap across strikes and expiries, with a simple
   term-structure model (skew dampens for longer-dated options).
 
+## Trading competitions
+
+`/compete` lists every competition, `/compete/[id]` is the running event
+(opt-in, live leaderboard, personal rank, final results), and
+`/compete/[id]/rules` is the shareable rules page. The module is
+**config-driven**: a competition is data, and everything the UI shows — dates,
+eligible underlyings, scoring method, minimum trades/volume, prize tiers, extra
+rules — comes from that payload rather than a source file, so the community
+team can schedule the next event without a frontend change.
+
+- **Config schema & validation** — `src/lib/competitions.ts`. Payloads are
+  validated before render (`validateCompetitionConfig`), so a malformed
+  competition degrades to a readable error instead of `undefined` / `Invalid
+  Date` in the rules page.
+- **Phase is derived, never stored** — `phaseOf()` compares absolute instants,
+  so a competition crosses Upcoming → Live → Ended on its own and scheduling is
+  DST-safe. Boundaries are half-open: `starts_at` is already live, `ends_at` is
+  already ended. `registration_closes_at` may be omitted (closes at the start,
+  the conservative default) or `null` (stays open to the end).
+- **Opt-in is a signed message** — `useCompetitionRegistration` requests a
+  backend challenge, signs it with Freighter, and posts the signature. A bearer
+  token alone must not be able to enter an address the signer does not control.
+- **Live leaderboard** — server-side pagination and search (searching only the
+  loaded page would be a lie), a selectable refresh cadence that pauses while
+  the tab is hidden, shared ranks for ties (`=3`), and disqualification shown on
+  the row rather than hidden.
+- **Privacy** — a display name is opt-in and reversible; without one, a
+  truncated address is shown (`displayNameFor`). It is never inferred.
+- **Anti-gaming is displayed** — the minimum trades/volume and any daily cap are
+  rendered on the rules page and in the entrant's own rank card, so an entry
+  that cannot qualify learns that before trading, not at payout.
+
+### Competitions API contract
+
+The scoring service and prize-distribution contracts are out of scope for the
+frontend issue, so `src/lib/api/competitions.ts` is the contract the UI is
+written against:
+
+| Method | Path |
+|---|---|
+| `GET` | `/api/v1/competitions` |
+| `GET` | `/api/v1/competitions/:id` |
+| `GET` | `/api/v1/competitions/:id/leaderboard?page&page_size&search` |
+| `GET` | `/api/v1/competitions/:id/me` |
+| `POST` | `/api/v1/competitions/:id/registration-message` |
+| `POST` | `/api/v1/competitions/:id/register` |
+| `POST` | `/api/v1/competitions/:id/display-name` |
+| `GET` | `/api/v1/competitions/:id/results` |
+
+Until the backend implements them, the pages show their honest empty/error
+states — no seeded or mock data is rendered as if it were real.
+
 ## Architecture
 
 ```
@@ -79,15 +136,20 @@ src/
 │   ├── page.tsx          # Home
 │   ├── options/          # Chain / Positions / Strategies / Surface
 │   ├── portfolio/        # Open positions, roll, close
+│   ├── compete/          # Competition listing, detail ([id]), rules ([id]/rules)
 │   └── history/          # Trade ledger
 ├── components/           # UI components (charts, dialogs, header, etc.)
+│   └── compete/          # Competition cards, rules, opt-in, leaderboard, rank, results
 └── lib/
     ├── api/              # Typed backend client: one file per domain
     │   ├── client.ts     # fetchJson + wsUrl(), NEXT_PUBLIC_API_URL, bearer auth header
     │   ├── market.ts, positions.ts, watchlist.ts, alerts.ts, history.ts,
-    │   │   strategies.ts, auth.ts, ws.ts, payoff.ts (client exists, unused)
+    │   │   strategies.ts, auth.ts, ws.ts, payoff.ts (client exists, unused),
+    │   │   competitions.ts (contract; backend not implemented yet)
     │   └── types.ts      # Response shapes mirroring the backend's
     ├── hooks/             # useBackend{Account,Positions,Watchlist,Alerts,History},
+    │                      # useCompetitions/useLeaderboard/useMyRank,
+    │                      # useCompetitionRegistration, useTiming (now + debounce),
     │                      # useSpotFeed (WS reconnect w/ backoff)
     ├── context/
     │   ├── BackendDataContext.tsx  # one shared account/positions/watchlist/alerts instance
@@ -100,6 +162,8 @@ src/
     ├── risk.ts             # Whole-portfolio risk: groups all open positions per
     │                       # underlying into one payoff curve, stress-tests the
     │                       # account across a spot-shock grid
+    ├── competitions.ts     # Competition config schema/validation, phases,
+    │                       # scoring + prize formatting, tie + anti-gaming rules
     ├── volSurface.ts      # Term-structure-aware IV surface grid
     ├── strategies.ts      # Multi-leg strategy templates
     ├── csv.ts / notify.ts # CSV export, browser Notification wrapper
@@ -125,7 +189,16 @@ needs the same guard.
 
 ## Known gaps
 
-- No test suite.
+- Tests cover the competition module only (`npm test`) — the rest of the app
+  still has no suite. There is no CI workflow in this repository.
+- The competitions API is a frontend-side contract: `src/lib/api/competitions.ts`
+  defines the endpoints the UI calls, but the backend does not implement them
+  yet, so `/compete` renders its empty/error states against a real backend. The
+  scoring service and prize distribution are out of scope for the frontend
+  issue.
+- The leaderboard renders a plain table rather than the reusable DataGrid being
+  added in #148, which is not on `main` yet. Rows are shaped so the swap is a
+  presentation change (`LeaderboardEntry` in, one row out) when it lands.
 - No on-chain/Soroban integration — the backend is a paper-trading API, not
   a wallet transaction signer against the contracts.
 - Wallet sign-in (`signBlob` → verify → bearer token) hasn't been manually
