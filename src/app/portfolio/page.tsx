@@ -13,7 +13,9 @@ import { MARKETS, EXPIRIES, bs, smileVol, fmtN, fmtK } from "../../lib/pricing";
 import { collateralRequired } from "../../lib/collateral";
 import { toCsv, downloadCsv } from "../../lib/csv";
 import { ExportButton } from "../../components/ExportButton";
-import { PortfolioRiskPanel } from "../../components/PortfolioRiskPanel";
+// PortfolioRiskPanel renders a heavy canvas chart — load lazily to keep
+// the portfolio page's initial JS lean (Issue #108 bundle optimization).
+import { PortfolioRiskPanelLazy as PortfolioRiskPanel } from "../../components/lazy";
 
 interface Marked extends Position {
   spot: number;

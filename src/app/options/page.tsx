@@ -3,8 +3,6 @@
 import { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { PayoffDiagram } from "../../components/PayoffDiagram";
-import { VolSmile } from "../../components/VolSmile";
 import { AppHeader } from "../../components/AppHeader";
 import { WalletConnect } from "../../components/WalletConnect";
 import { MARKETS, EXPIRIES, bs, smileVol, seededRandom, fmtN, fmtSpot, fmtK, type Greeks } from "../../lib/pricing";
@@ -16,15 +14,21 @@ import { useWalletStore } from "../../lib/store/wallet";
 import { collateralRequired } from "../../lib/collateral";
 import { AlertsPanel } from "../../components/AlertsPanel";
 import { StarButton } from "../../components/StarButton";
-import { SpotPriceChart } from "../../components/SpotPriceChart";
 import { usePriceHistory } from "../../lib/usePriceHistory";
 import { useHydrated } from "../../lib/useHydrated";
 import { StrategyPicker } from "../../components/StrategyPicker";
-import { MultiLegPayoffDiagram } from "../../components/MultiLegPayoffDiagram";
-import { VolSurfaceHeatmap } from "../../components/VolSurfaceHeatmap";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { type StrategyTemplate } from "../../lib/strategies";
 import { netPremium, type PricedLeg } from "../../lib/payoff";
+// Heavy chart / dialog components — loaded lazily to exclude from the
+// initial JS bundle (Issue #108 bundle optimization).
+import {
+  PayoffDiagramLazy as PayoffDiagram,
+  MultiLegPayoffDiagramLazy as MultiLegPayoffDiagram,
+  VolSurfaceHeatmapLazy as VolSurfaceHeatmap,
+  VolSmileLazy as VolSmile,
+  SpotPriceChartLazy as SpotPriceChart,
+  ConfirmDialogLazy as ConfirmDialog,
+} from "../../components/lazy";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
