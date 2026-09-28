@@ -1,30 +1,23 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { addToWatchlist, getWatchlist, removeFromWatchlist } from "../api/watchlist";
 import type { WatchlistItem } from "../api/types";
+import { useAsyncQuery } from "../query";
+
+const NO_ITEMS: WatchlistItem[] = [];
 
 /**
  * Watchlist from the backend. `token` should be `null` pre-hydration —
  * see useBackendAccount's doc comment for why.
  */
 export function useBackendWatchlist(token: string | null) {
-  const [items, setItems] = useState<WatchlistItem[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const refresh = useCallback(() => {
-    if (!token) {
-      setItems([]);
-      return;
-    }
-    setLoading(true);
-    getWatchlist(token)
-      .then(setItems)
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
-  }, [token]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  const query = useAsyncQuery<WatchlistItem[]>(
+    token ? `watchlist:${token}` : null,
+    () => getWatchlist(token!),
+    { authed: true }
+  );
+  const refresh = query.refetch;
+  const items = query.data ?? NO_ITEMS;
+  const loading = query.status === "loading";
 
   const add = useCallback(
     async (underlying: string) => {
@@ -44,5 +37,5 @@ export function useBackendWatchlist(token: string | null) {
     [token, refresh]
   );
 
-  return { items, loading, refresh, add, remove };
+  return { items, loading, refresh, add, remove, query };
 }

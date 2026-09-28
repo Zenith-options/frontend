@@ -6,13 +6,17 @@ import { PayoffDiagram } from "../components/PayoffDiagram";
 import { Logo } from "../components/Logo";
 import { bs, smileVol, fmtN, fmtK, MARKETS } from "../lib/pricing";
 import { useBackendData } from "../lib/context/BackendDataContext";
+import { useEnvironment } from "../lib/context/EnvironmentContext";
+import { DataBoundary, EmptyState, Skeleton, SkeletonRegion } from "../components/states";
+import { AuthGate } from "../components/states/AuthGate";
+import { EnvironmentSelector } from "../components/env/EnvironmentSelector";
 
 const XLMPRICE=0.1182, XLMVOL=0.82, T=30/365;
 
 export default function Home() {
   const [spot,setSpot]=useState(XLMPRICE);
-  const { watchlist } = useBackendData();
-  const favMarkets=MARKETS.filter(m=>watchlist.some(w=>w.underlying===m.sym));
+  const { watchlistQuery, authStatus } = useBackendData();
+  const { network } = useEnvironment();
 
   useEffect(()=>{
     const id=setInterval(()=>setSpot(p=>Math.max(0.05,p+(Math.random()-0.5)*0.0004)),2000);
@@ -31,7 +35,7 @@ export default function Home() {
     <div style={{fontFamily:"var(--font-sans)",background:"var(--bg)",minHeight:"100vh",color:"var(--text-hi)"}}>
 
       {/* NAV */}
-      <nav style={{position:"sticky",top:0,zIndex:50,height:52,display:"flex",alignItems:"center",
+      <nav style={{position:"sticky",top:"var(--env-banner-h)",zIndex:50,height:52,display:"flex",alignItems:"center",
         justifyContent:"space-between",padding:"0 24px",
         borderBottom:"1px solid var(--border-default)",background:"rgba(20,19,15,0.88)",backdropFilter:"blur(12px)"}}>
         <div style={{display:"flex",alignItems:"center",gap:32}}>
@@ -51,10 +55,7 @@ export default function Home() {
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <div style={{width:6,height:6,borderRadius:"50%",background:"var(--call)"}}/>
-            <span style={{fontSize:11,color:"var(--text-lo)"}}>Stellar Testnet</span>
-          </div>
+          <EnvironmentSelector />
           <Link href="/options" style={{padding:"7px 14px",background:"var(--brand)",color:"var(--bg)",
             border:"none",borderRadius:0,fontSize:13,fontWeight:700,cursor:"pointer",textDecoration:"none"}}>
             Trade Options
@@ -118,7 +119,7 @@ export default function Home() {
                 spot={spot} strike={spot*1.05}
                 premium={bs(spot,spot*1.05,smileVol(XLMVOL,1.05),T,true).premium}
                 isCall={true} contracts={100}
-                width={380} height={200}
+                width={380} height={200} interactive={false}
               />
             </div>
             <div style={{display:"flex",gap:16,marginTop:12,justifyContent:"center"}}>
@@ -158,7 +159,8 @@ export default function Home() {
           </div>
         </div>
 
-        <div style={{border:"1px solid var(--border-default)",borderRadius:0,overflow:"hidden",background:"var(--bg-raised)"}}>
+        <div style={{border:"1px solid var(--border-default)",borderRadius:0,overflowX:"auto",background:"var(--bg-raised)"}}>
+          <div style={{minWidth:632}}>
           {/* Chain header */}
           <div style={{display:"grid",gridTemplateColumns:"52px 60px 68px 68px 48px 88px 48px 68px 68px 60px 52px",
             padding:"0",borderBottom:"1px solid var(--border-default)",background:"var(--bg-overlay)"}}>
@@ -195,8 +197,9 @@ export default function Home() {
               </div>
             );
           })}
+          </div>
         </div>
-        <div style={{display:"flex",justifyContent:"center",gap:24,marginTop:12}}>
+        <div style={{display:"flex",justifyContent:"center",gap:24,marginTop:12,flexWrap:"wrap"}}>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
             <div style={{width:10,height:10,borderRadius:0,background:"var(--call-dim)",border:"1px solid rgba(92,154,107,0.35)"}}/>
             <span style={{fontSize:11,color:"var(--text-lo)"}}>ITM Call</span>
@@ -214,22 +217,35 @@ export default function Home() {
         <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.12em",color:"var(--text-lo)",marginBottom:8}}>
           Watchlist
         </div>
-        {favMarkets.length===0 ? (
-          <p style={{fontSize:13,color:"var(--text-mid)"}}>
-            Star a market on the <Link href="/options" style={{color:"var(--brand)"}}>options chain</Link> to see it here.
-          </p>
-        ) : (
-          <div style={{display:"flex",gap:0,border:"1px solid var(--border-default)",background:"var(--bg-raised)"}}>
-            {favMarkets.map((m,i)=>(
-              <Link key={m.sym} href={`/options?u=${m.sym}`} style={{flex:1,padding:"14px 18px",textDecoration:"none",
-                borderRight:i<favMarkets.length-1?"1px solid var(--border-default)":"none"}}>
-                <div style={{fontSize:12,fontWeight:600,color:"var(--text-hi)",marginBottom:4}}>{m.sym}</div>
-                <div className="num" style={{fontSize:15,fontWeight:600,color:"var(--text-hi)"}}>{fmtK(m.sym==="XLM"?spot:m.price)}</div>
-                <div style={{fontSize:10,color:"var(--text-lo)"}}>IV {Math.round(m.vol*100)}%</div>
-              </Link>
-            ))}
-          </div>
-        )}
+        <DataBoundary
+          query={watchlistQuery}
+          auth={authStatus}
+          errorTitle="Couldn't load your watchlist"
+          skeleton={
+            <SkeletonRegion label="Loading watchlist" testId="watchlist-skeleton">
+              <Skeleton height={72} />
+            </SkeletonRegion>
+          }
+          signedOut={<AuthGate compact description={`Connect your wallet to keep a watchlist on ${network.label}.`} testId="watchlist-auth" />}
+          isEmpty={items=>MARKETS.every(m=>!items.some(w=>w.underlying===m.sym))}
+          empty={<EmptyState compact title="Your watchlist is empty." description="Star a market on the options chain to see it here." action={{label:"Open the chain →",href:"/options"}} testId="watchlist-empty" />}
+        >
+          {items=>{
+            const favMarkets=MARKETS.filter(m=>items.some(w=>w.underlying===m.sym));
+            return (
+              <div data-testid="watchlist" style={{display:"flex",flexWrap:"wrap",gap:0,border:"1px solid var(--border-default)",background:"var(--bg-raised)"}}>
+                {favMarkets.map((m,i)=>(
+                  <Link key={m.sym} href={`/options?u=${m.sym}`} style={{flex:"1 1 140px",padding:"14px 18px",textDecoration:"none",
+                    borderRight:i<favMarkets.length-1?"1px solid var(--border-default)":"none"}}>
+                    <div style={{fontSize:12,fontWeight:600,color:"var(--text-hi)",marginBottom:4}}>{m.sym}</div>
+                    <div className="num" style={{fontSize:15,fontWeight:600,color:"var(--text-hi)"}}>{fmtK(m.sym==="XLM"?spot:m.price)}</div>
+                    <div style={{fontSize:10,color:"var(--text-lo)"}}>IV {Math.round(m.vol*100)}%</div>
+                  </Link>
+                ))}
+              </div>
+            );
+          }}
+        </DataBoundary>
       </section>
 
       {/* HOW IT WORKS — no cards, just structured text */}
@@ -239,7 +255,7 @@ export default function Home() {
         </div>
         <h2 style={{fontFamily:"var(--font-serif)",fontSize:26,fontWeight:600,letterSpacing:"-0.01em",marginBottom:40}}>How Zenith works</h2>
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1px",background:"var(--border-default)",border:"1px solid var(--border-default)"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,320px),1fr))",gap:"1px",background:"var(--border-default)",border:"1px solid var(--border-default)"}}>
           {[
             {n:"01",color:"var(--call)",rgb:"92,154,107",side:"Buyer",
               title:"Buy a call or put",
@@ -272,7 +288,7 @@ export default function Home() {
 
       {/* FOOTER */}
       <footer style={{borderTop:"1px solid var(--border-subtle)",padding:"20px 24px"}}>
-        <div style={{maxWidth:1080,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{maxWidth:1080,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
           <span style={{fontSize:12,color:"var(--text-lo)"}}>Zenith Protocol · MIT License · Stellar Soroban</span>
           <div style={{display:"flex",gap:20}}>
             {[["GitHub","https://github.com/Zenith-options"],["Discord","#"],["Docs","#"]].map(([l,href])=>(

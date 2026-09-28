@@ -32,6 +32,10 @@
     --text-mid: #9C9484;
     --text-lo:  #5C5648;
 
+    /* Environment strip height — every full-height page subtracts it. */
+    --env-banner-h: 24px;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+
     --font-serif: var(--font-fraunces), Georgia, serif;
     --font-sans:  var(--font-plex-sans), system-ui, sans-serif;
     --font-mono:  var(--font-jetbrains-mono), ui-monospace, monospace;
@@ -56,6 +60,14 @@
 
   ::selection { background: rgba(181,150,101,0.28); }
   :focus-visible { outline: 1px solid var(--brand); outline-offset: 2px; }
+
+  /* top/left pin it to its containing block's origin: left at its static
+     position inside a horizontal scroller, it escapes the scroller's clip
+     and widens the page. */
+  .sr-only {
+    position: absolute; top: 0; left: 0; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
 
   .num {
     font-family: var(--font-mono);
@@ -102,6 +114,7 @@
   .cc.atm  { color: var(--atm); }
   .cc.brand{ color: var(--brand); }
   .cc.tradeable  { font-weight: 600; color: var(--text-hi); cursor: pointer; }
+  button.cc { background: none; border: none; height: 100%; font-size: 11px; }
   .cc.tradeable:hover { color: var(--atm); text-decoration: underline; }
 
   .strike-cell {
@@ -166,8 +179,260 @@
     animation: shimmer 1.5s infinite;
     border-radius: 0;
   }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton { animation: none; background: var(--bg-elevated); }
+    .flash-up, .flash-down { animation: none; }
+    .sheet-panel { transition: none !important; }
+  }
 
-  /* Marketing page responsiveness — the app shell (chain/portfolio) stays desktop-first */
+  /* ── Full-height app pages (options/portfolio/history) ───────────────
+     100vh first as a fallback, then dvh so iOS Safari's collapsing URL bar
+     doesn't hide the bottom of the page. */
+  .app-shell {
+    display: flex; flex-direction: column; overflow: hidden;
+    background: var(--bg); font-family: var(--font-sans);
+    height: calc(100vh - var(--env-banner-h));
+    height: calc(100dvh - var(--env-banner-h));
+  }
+
+  /* ── Environment modes ─────────────────────────────────────────────── */
+  .env-banner {
+    position: sticky; top: 0; z-index: 70;
+    height: var(--env-banner-h); display: flex; align-items: center; justify-content: center;
+    padding: 0 12px; font-size: 11px; letter-spacing: 0.04em; overflow: hidden; white-space: nowrap;
+  }
+  .env-banner-label { display: none; align-items: center; gap: 8px; min-width: 0; }
+  .env-banner-label strong { text-transform: uppercase; letter-spacing: 0.1em; font-size: 10px; }
+  .env-banner-desc { overflow: hidden; text-overflow: ellipsis; opacity: 0.85; }
+  .env-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .env-frame { position: fixed; inset: 0; pointer-events: none; z-index: 200; }
+
+  html[data-env="paper"] .env-banner { background: #1E2329; color: #8FA3B8; border-bottom: 1px dashed #8FA3B8; }
+  html[data-env="paper"] .env-banner-label.env-paper { display: inline-flex; }
+  html[data-env="paper"] .env-frame { border: 2px dashed rgba(143,163,184,0.55); }
+
+  html[data-env="testnet"] .env-banner {
+    color: #1A1406; border-bottom: 1px solid #E0A526;
+    background: repeating-linear-gradient(135deg, #E0A526 0 14px, #D29A1F 14px 28px);
+  }
+  html[data-env="testnet"] .env-banner-label.env-testnet { display: inline-flex; }
+  html[data-env="testnet"] .env-frame { border: 2px solid #E0A526; }
+
+  html[data-env="mainnet"] .env-banner { background: #E5484D; color: #fff; }
+  html[data-env="mainnet"] .env-banner-label.env-mainnet { display: inline-flex; }
+  html[data-env="mainnet"] .env-frame { border: 3px solid #E5484D; }
+
+  .env-alert {
+    position: relative; z-index: 69; display: flex; gap: 12px; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; padding: 8px 16px; font-size: 12px; line-height: 1.4;
+    background: var(--put-dim); color: var(--text-hi); border-bottom: 1px solid var(--put);
+  }
+  .env-alert button {
+    font-size: 11px; padding: 4px 10px; background: transparent; color: var(--text-hi);
+    border: 1px solid var(--border-strong); cursor: pointer;
+  }
+  .env-select {
+    background: var(--bg-elevated); border: 1px solid; font-size: 11px; font-weight: 700;
+    padding: 3px 4px; letter-spacing: 0.04em; cursor: pointer; border-radius: 0;
+  }
+
+  /* ── Dialogs ───────────────────────────────────────────────────────── */
+  .dialog-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100;
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+  }
+  .dialog-panel {
+    width: 380px; max-width: 100%; max-height: calc(100dvh - 32px); overflow-y: auto;
+    background: var(--bg-elevated); border: 1px solid var(--border-default); padding: 20px;
+    padding-bottom: calc(20px + var(--safe-bottom));
+  }
+  .dialog-panel:focus { outline: none; }
+
+  /* ── Loading / empty / error / signed-out states ───────────────────── */
+  .state-box {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    padding: 56px 16px; border: 1px solid var(--border-subtle); background: var(--bg-raised); text-align: center;
+  }
+  .auth-cta {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 6px 14px; background: var(--brand); color: var(--bg); border: none;
+    font-size: 12px; font-weight: 700; cursor: pointer; text-decoration: none;
+  }
+
+  /* ── Bottom sheet ──────────────────────────────────────────────────── */
+  .sheet-backdrop { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,0.55); }
+  .sheet-panel {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 91;
+    max-height: calc(100dvh - var(--env-banner-h) - 24px); display: flex; flex-direction: column;
+    background: var(--bg-raised); border-top: 1px solid var(--border-strong);
+    padding-bottom: var(--safe-bottom);
+    transition: transform 200ms ease-out;
+  }
+  .sheet-handle {
+    display: flex; justify-content: center; align-items: center; height: 28px; flex-shrink: 0;
+    cursor: grab; touch-action: none;
+  }
+  .sheet-handle::before { content: ""; width: 40px; height: 4px; border-radius: 2px; background: var(--border-strong); }
+  .sheet-body { overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; }
+
+  /* ── Onboarding tour ───────────────────────────────────────────────── */
+  .tour-spotlight {
+    position: fixed; z-index: 150; pointer-events: none;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.55); outline: 2px solid var(--brand);
+    transition: top 150ms, left 150ms, width 150ms, height 150ms;
+  }
+  .tour-card {
+    position: fixed; z-index: 151; width: 320px; max-width: calc(100vw - 32px);
+    background: var(--bg-elevated); border: 1px solid var(--brand); padding: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .term {
+    font: inherit; color: inherit; background: none; border: none; padding: 0; cursor: help;
+    text-decoration: underline dotted rgba(181,150,101,0.6); text-underline-offset: 3px;
+    text-transform: inherit; letter-spacing: inherit;
+  }
+  .term-tooltip {
+    position: absolute; z-index: 160; width: 260px; max-width: calc(100vw - 24px);
+    padding: 10px 12px; background: var(--bg-overlay); border: 1px solid var(--border-strong);
+    color: var(--text-hi); font-size: 12px; font-weight: 400; line-height: 1.5; text-align: left;
+    text-transform: none; letter-spacing: normal; white-space: normal; font-family: var(--font-sans);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+  }
+
+  /* ── Responsive terminal ───────────────────────────────────────────
+     Desktop-first markup; phones (≤640px) and tablets (≤1024px) are
+     handled with container queries where the component owns its width
+     (chain, cards) and media queries for page chrome. */
+
+  /* Tap targets: ≥44×44 on touch/narrow layouts (WCAG 2.5.5). */
+  @media (max-width: 1024px), (pointer: coarse) {
+    .tap { min-height: 44px; min-width: 44px; }
+  }
+
+  .app-header {
+    min-height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 16px;
+    border-bottom: 1px solid var(--border-default); padding: 0 16px; background: var(--bg-raised);
+  }
+  .app-header-nav { display: flex; gap: 2px; }
+  .app-header-sep { width: 1px; height: 20px; background: var(--border-default); flex-shrink: 0; }
+  .app-header-extra { display: contents; }
+
+  @media (max-width: 1024px) {
+    .app-header { flex-wrap: wrap; gap: 8px 12px; padding: 4px 12px; }
+    .app-header-sep { display: none; }
+    /* page-specific controls drop to their own horizontally scrolling row */
+    .app-header-extra {
+      display: flex; align-items: center; gap: 12px; order: 10; width: 100%;
+      position: relative; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px;
+    }
+    .app-header-extra::-webkit-scrollbar { display: none; }
+    .app-header-extra > * { flex-shrink: 0; }
+    .app-header-nav { order: 5; width: 100%; }
+    .app-header-nav a { flex: 1; text-align: center; min-height: 44px; display: flex !important; align-items: center; justify-content: center; }
+  }
+
+  /* Options terminal layout */
+  .terminal-main { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+  .terminal-sidebar {
+    width: 236px; flex-shrink: 0; display: flex; flex-direction: column; gap: 18px;
+    overflow-y: auto; padding: 14px 12px; background: var(--bg-raised); border-right: 1px solid var(--border-default);
+  }
+  .terminal-tabs { display: flex; border-bottom: 1px solid var(--border-default); padding: 0 8px; background: var(--bg-raised); }
+  .terminal-tabs-hint { margin-left: auto; display: flex; align-items: center; padding-right: 4px; }
+  .mobile-only { display: none; }
+  .terminal-status { height: 26px; flex-shrink: 0; }
+  .strategies-grid { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
+
+  @media (max-width: 1024px) {
+    .terminal-sidebar { display: none; }
+    .mobile-only { display: revert; }
+    .desktop-only { display: none !important; }
+    .terminal-tabs { overflow-x: auto; scrollbar-width: none; padding: 0; scroll-snap-type: x mandatory; }
+    .terminal-tabs::-webkit-scrollbar { display: none; }
+    .terminal-tabs > button { flex: 1 0 auto; min-height: 44px; scroll-snap-align: start; }
+    .terminal-tabs-hint { display: none; }
+    .terminal-status { padding-bottom: var(--safe-bottom); height: auto; min-height: 26px; }
+    .terminal-status-hint { display: none; }
+    .strategies-grid { grid-template-columns: 1fr; }
+  }
+
+  /* Chain: both sides on wide containers; one side + sticky strike on narrow ones. */
+  .chain-container { container-type: inline-size; container-name: chain; }
+  .chain-mobile { display: none; }
+  @container chain (max-width: 640px) {
+    .chain-desktop { display: none; }
+    .chain-mobile { display: block; }
+  }
+  .chain-mobile-scroll { position: relative; overflow-x: auto; overscroll-behavior-x: contain; }
+  .chain-m-row {
+    display: grid; grid-template-columns: 88px repeat(5, minmax(64px, 1fr));
+    min-width: 408px; align-items: stretch; border-bottom: 1px solid var(--border-subtle);
+  }
+  .chain-m-row.head { position: sticky; top: 0; z-index: 3; background: var(--bg-raised); border-bottom: 1px solid var(--border-default); }
+  .chain-m-row > * {
+    display: flex; align-items: center; justify-content: flex-end; padding: 0 8px;
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--text-mid);
+    min-height: 44px;
+  }
+  .chain-m-row.head > * { min-height: 32px; font-family: var(--font-sans); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-lo); }
+  .chain-m-row .m-strike {
+    position: sticky; left: 0; z-index: 2; justify-content: center; font-weight: 700;
+    background: var(--bg-overlay); border-right: 1px solid var(--border-default); color: var(--text-hi);
+  }
+  .chain-m-row.atm .m-strike { color: var(--atm); background: #2E2819; }
+  .chain-m-row.itm { background: var(--call-dim); }
+  .chain-m-row.itm.put-side { background: var(--put-dim); }
+  .chain-m-row button.m-trade {
+    background: none; border: none; border-left: 1px solid var(--border-subtle); cursor: pointer;
+    font: inherit; font-weight: 600; color: var(--text-hi); min-width: 44px;
+  }
+  .chain-m-row button.m-trade:active { background: var(--brand-dim); }
+  .side-toggle { display: flex; margin: 8px; border: 1px solid var(--border-default); }
+  .side-toggle button {
+    flex: 1; min-height: 44px; border: none; background: transparent; color: var(--text-lo);
+    font-size: 13px; font-weight: 700; cursor: pointer; letter-spacing: 0.06em;
+  }
+  .side-toggle button[aria-pressed="true"].call { background: var(--call-dim); color: var(--call); }
+  .side-toggle button[aria-pressed="true"].put { background: var(--put-dim); color: var(--put); }
+
+  /* Tables ↔ expandable cards (portfolio, history, positions). */
+  .responsive-list { container-type: inline-size; container-name: rlist; }
+  .rl-cards { display: none; }
+  @container rlist (max-width: 720px) {
+    .rl-table { display: none; }
+    .rl-cards { display: flex; flex-direction: column; gap: 8px; }
+  }
+  .rl-card { border: 1px solid var(--border-default); background: var(--bg-raised); }
+  .rl-card-summary {
+    width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center;
+    padding: 12px 14px; min-height: 56px; background: none; border: none; color: inherit; text-align: left; cursor: pointer;
+  }
+  .rl-card-details {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; padding: 4px 14px 14px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .rl-card-details dt { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-lo); }
+  .rl-card-details dd { font-family: var(--font-mono); font-size: 12px; color: var(--text-hi); }
+  .rl-card-actions { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 4px; }
+  .rl-card-actions > * { flex: 1; }
+
+  /* Summary stat bars (portfolio/history): a row on desktop, 2-up grid on phones. */
+  .stat-bar { display: flex; border: 1px solid var(--border-default); background: var(--bg-raised); }
+  .stat-bar > div { flex: 1; padding: 14px 18px; border-right: 1px solid var(--border-default); min-width: 0; }
+  .stat-bar > div:last-child { border-right: none; }
+  @media (max-width: 640px) {
+    .stat-bar { display: grid; grid-template-columns: 1fr 1fr; }
+    .stat-bar > div { padding: 12px 14px; border-bottom: 1px solid var(--border-default); }
+    .stat-bar > div:nth-child(2n) { border-right: none; }
+    .page-pad { padding: 20px 12px 48px !important; }
+    .page-title-row { flex-direction: column; gap: 8px; }
+  }
+
+  /* Charts: touch crosshair + pinch zoom own the gestures inside the plot,
+     but vertical page scrolling still works when you drag through one. */
+  .chart-touch { touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+
+  /* Marketing page responsiveness */
   .hero-grid {
     display: grid;
     grid-template-columns: 1fr 420px;
@@ -178,7 +443,7 @@
   .stats-row { display: flex; flex-wrap: wrap; gap: 0; }
 
   @media (max-width: 760px) {
-    .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+    .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 40px; }
     .nav-links { display: none; }
     .stats-row > div { padding-right: 20px !important; margin-right: 20px !important; }
   }

@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
+import { useChartGestures } from "../lib/hooks/useChartGestures";
+import { useElementWidth } from "../lib/hooks/useElementWidth";
 
 interface PayoffDiagramProps {
   spot: number;
@@ -10,10 +12,16 @@ interface PayoffDiagramProps {
   /** True for a written/short position — mirrors the payoff curve (writer's P&L is the buyer's, negated). */
   short?: boolean;
   contracts?: number;
+  /** Preferred width; the chart shrinks to fit a narrower container. */
   width?: number;
   height?: number;
   compact?: boolean;
+  /** Crosshair + pinch/wheel zoom. Off for decorative uses (e.g. the home page). */
+  interactive?: boolean;
 }
+
+const fmtMoneyLabel = (v: number) => (v === 0 ? "0" : v > 0 ? `+$${v.toFixed(2)}` : `−$${Math.abs(v).toFixed(2)}`);
+const fmtPriceLabel = (s: number) => (s >= 1 ? `$${s.toFixed(2)}` : `$${s.toFixed(4)}`);
 
 export function PayoffDiagram({
   spot,
@@ -22,18 +30,25 @@ export function PayoffDiagram({
   isCall,
   short = false,
   contracts = 1,
-  width = 340,
+  width: preferredWidth = 340,
   height = 180,
   compact = false,
+  interactive = true,
 }: PayoffDiagramProps) {
+  const [containerRef, measured] = useElementWidth<HTMLDivElement>(preferredWidth);
+  const width = Math.min(preferredWidth, measured);
   const PAD = compact ? { t: 8, r: 8, b: 20, l: 40 } : { t: 16, r: 16, b: 28, l: 52 };
   const W = width  - PAD.l - PAD.r;
   const H = height - PAD.t - PAD.b;
+  const uid = useId().replace(/:/g, "");
+  const gestures = useChartGestures({ svgWidth: width, plotLeft: PAD.l, plotWidth: W });
+  const zoom = interactive ? gestures.zoom : 1;
 
   const data = useMemo(() => {
-    // Spot price range: ±35% from current spot
-    const lo = spot * 0.65;
-    const hi = spot * 1.35;
+    // Spot price range: ±35% from current spot, narrowed by zoom
+    const half = 0.35 / zoom;
+    const lo = spot * (1 - half);
+    const hi = spot * (1 + half);
     const range = hi - lo;
 
     // Payoff function — writer's P&L is the buyer's, negated
@@ -99,6 +114,7 @@ export function PayoffDiagram({
     }));
 
     return {
+      lo, range, pnl, toY,
       pathData, profitPath, lossPath,
       zeroY,
       spotX: toX(spot),
@@ -108,27 +124,41 @@ export function PayoffDiagram({
       yLabels, xLabels,
       breakeven, maxPnl,
     };
-  }, [spot, strike, premium, isCall, short, contracts, W, H]);
+  }, [spot, strike, premium, isCall, short, contracts, W, H, zoom]);
 
   const color = isCall ? "#5C9A6B" : "#B65640";
+  const cursor = interactive ? gestures.cursor : null;
+  const crosshair = cursor === null ? null : (() => {
+    const s = data.lo + (cursor / W) * data.range;
+    const p = data.pnl(s);
+    return { x: cursor, y: Math.min(H, Math.max(0, data.toY(p))), s, p };
+  })();
+  const interactiveProps = interactive ? gestures.svgProps : {};
 
+  // The legend (non-compact) sits under the chart; reserve its height so it
+  // never spills onto whatever follows.
   return (
-    <div style={{ width, height }}>
+    <div ref={containerRef} style={{ width: "100%", maxWidth: preferredWidth, minHeight: compact ? height : height + 34 }}>
       <svg
+        {...interactiveProps}
         width={width}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
-        style={{ overflow: "visible" }}
+        style={{ overflow: "visible", display: "block" }}
+        role={interactive ? "group" : "img"}
+        aria-label={interactive
+          ? "Payoff at expiry chart. Arrow keys move the crosshair; plus and minus zoom; 0 resets."
+          : "Payoff at expiry chart"}
       >
         <defs>
-          <clipPath id="chart-clip">
+          <clipPath id={`chart-clip-${uid}`}>
             <rect x={PAD.l} y={PAD.t} width={W} height={H} />
           </clipPath>
-          <linearGradient id="profit-grad" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={`profit-grad-${uid}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="rgba(92,154,107,0.25)" />
             <stop offset="100%" stopColor="rgba(92,154,107,0.04)" />
           </linearGradient>
-          <linearGradient id="loss-grad" x1="0" y1="1" x2="0" y2="0">
+          <linearGradient id={`loss-grad-${uid}`} x1="0" y1="1" x2="0" y2="0">
             <stop offset="0%" stopColor="rgba(182,86,64,0.25)" />
             <stop offset="100%" stopColor="rgba(182,86,64,0.04)" />
           </linearGradient>
@@ -149,15 +179,15 @@ export function PayoffDiagram({
           {/* Loss area fill */}
           <path
             d={data.lossPath}
-            fill="url(#loss-grad)"
-            clipPath="url(#chart-clip)"
+            fill={`url(#loss-grad-${uid})`}
+            clipPath={`url(#chart-clip-${uid})`}
           />
 
           {/* Profit area fill */}
           <path
             d={data.profitPath}
-            fill="url(#profit-grad)"
-            clipPath="url(#chart-clip)"
+            fill={`url(#profit-grad-${uid})`}
+            clipPath={`url(#chart-clip-${uid})`}
           />
 
           {/* Current spot vertical */}
@@ -190,7 +220,7 @@ export function PayoffDiagram({
             strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
-            clipPath="url(#chart-clip)"
+            clipPath={`url(#chart-clip-${uid})`}
           />
 
           {/* Y-axis labels */}
@@ -259,6 +289,18 @@ export function PayoffDiagram({
             </text>
           )}
 
+          {crosshair && (
+            <g pointerEvents="none" data-testid="chart-crosshair">
+              <line x1={crosshair.x} y1={0} x2={crosshair.x} y2={H} stroke="rgba(243,238,227,0.45)" strokeWidth={1} />
+              <circle cx={crosshair.x} cy={crosshair.y} r={3} fill={crosshair.p >= 0 ? "#5C9A6B" : "#B65640"} />
+              <g transform={`translate(${Math.min(Math.max(crosshair.x - 55, 0), W - 110)}, 2)`}>
+                <rect width={110} height={26} fill="rgba(20,19,15,0.92)" stroke="rgba(255,255,255,0.12)" />
+                <text x={6} y={10} fontSize={9} fontFamily="var(--font-mono)" fill="rgba(243,238,227,0.7)">S {fmtPriceLabel(crosshair.s)}</text>
+                <text x={6} y={21} fontSize={9} fontFamily="var(--font-mono)" fill={crosshair.p >= 0 ? "#5C9A6B" : "#B65640"}>P&amp;L {fmtMoneyLabel(crosshair.p)}</text>
+              </g>
+            </g>
+          )}
+
           {/* Chart border */}
           <rect x={0} y={0} width={W} height={H}
             fill="none"
@@ -268,9 +310,15 @@ export function PayoffDiagram({
         </g>
       </svg>
 
+      {interactive && (
+        <span className="sr-only" aria-live="polite">
+          {crosshair ? `At ${fmtPriceLabel(crosshair.s)}, P&L ${fmtMoneyLabel(crosshair.p)}` : ""}
+        </span>
+      )}
+
       {/* Legend below */}
       {!compact && (
-        <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 4 }}>
+        <div style={{ display: "flex", gap: 16, justifyContent: "center", alignItems: "center", marginTop: 4 }}>
           {[
             short
               ? { label: "Max gain", value: `+$${(premium * contracts).toFixed(2)}`, color: "#5C9A6B" }
@@ -286,6 +334,12 @@ export function PayoffDiagram({
               </span>
             </div>
           ))}
+          {zoom > 1.01 && (
+            <button type="button" onClick={gestures.resetZoom} style={{
+              fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-mid)", background: "none",
+              border: "1px solid var(--border-default)", padding: "2px 6px", cursor: "pointer",
+            }}>{zoom.toFixed(1)}× · reset</button>
+          )}
         </div>
       )}
     </div>

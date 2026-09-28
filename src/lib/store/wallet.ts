@@ -1,7 +1,9 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import freighterApi from "@stellar/freighter-api";
 import { getMe, requestNonce, verifySignature } from "../api/auth";
+import { getCurrentMode } from "../env/mode";
+import { modeScopedStateStorage } from "../env/storage";
 
 export type WalletStatus = "idle" | "connecting" | "connected" | "not-installed" | "error";
 
@@ -16,9 +18,18 @@ interface WalletState {
    *  endpoint needs to handle that. */
   token: string | null;
   error: string | null;
+  /** True while checkConnection() is re-establishing a session on load —
+   *  lets the UI show "signing in" rather than flashing "not signed in". */
+  checking: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
   checkConnection: () => Promise<void>;
+  /** Backend sign-in for an already-connected wallet (e.g. after the
+   *  signature prompt was dismissed, or after switching modes). */
+  signIn: () => Promise<void>;
+  /** Re-read the wallet's network from Freighter. Freighter has no change
+   *  event, so WalletNetworkWatcher polls this. */
+  refreshNetwork: () => Promise<void>;
 }
 
 // Signs the backend's nonce message with Freighter and exchanges it for a
@@ -46,6 +57,7 @@ export const useWalletStore = create<WalletState>()(
       network: null,
       token: null,
       error: null,
+      checking: false,
 
       connect: async () => {
         set({ status: "connecting", error: null });
@@ -73,8 +85,30 @@ export const useWalletStore = create<WalletState>()(
 
       disconnect: () => set({ status: "idle", address: null, network: null, token: null, error: null }),
 
+      signIn: async () => {
+        const address = get().address;
+        if (!address) return get().connect();
+        set({ checking: true, error: null });
+        try {
+          const token = await signInWithBackend(address);
+          set({ token });
+        } catch (err) {
+          set({ token: null, error: err instanceof Error ? err.message : "Backend sign-in failed" });
+        } finally {
+          set({ checking: false });
+        }
+      },
+
+      refreshNetwork: async () => {
+        if (get().status !== "connected") return;
+        const details = await freighterApi.getNetworkDetails().catch(() => null);
+        const network = details?.network ?? null;
+        if (network !== get().network) set({ network });
+      },
+
       // Re-verify a persisted session on load rather than trusting stale state.
       checkConnection: async () => {
+        set({ checking: true });
         try {
           const installed = await freighterApi.isConnected();
           if (!installed) return;
@@ -107,11 +141,16 @@ export const useWalletStore = create<WalletState>()(
           }
         } catch {
           set({ status: "idle", address: null, network: null, token: null });
+        } finally {
+          set({ checking: false });
         }
       },
     }),
     {
-      name: "zenith-wallet",
+      // Persisted as zenith:<mode>:wallet — each environment mode has its
+      // own backend and therefore its own session token. See src/lib/env.
+      name: "wallet",
+      storage: createJSONStorage(() => modeScopedStateStorage(getCurrentMode)),
       partialize: (s) => ({ address: s.address, token: s.token }),
       skipHydration: true,
     }

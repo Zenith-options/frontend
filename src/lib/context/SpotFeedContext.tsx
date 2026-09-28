@@ -28,3 +28,5 @@ export function useSpotFeedContext(): SpotFeedData {
   if (!ctx) throw new Error("useSpotFeedContext must be used within SpotFeedProvider");
   return ctx;
 }
+
+export { SpotFeedContext };

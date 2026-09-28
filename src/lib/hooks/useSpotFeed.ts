@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { subscribeToSpotFeed } from "../api/ws";
+import { wsUrl } from "../api/client";
 import type { SpotResponse } from "../api/types";
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000]; // caps at 10s between attempts
 
-export type SpotFeedStatus = "connecting" | "open" | "closed";
+/** "unavailable" = the active environment mode has no backend configured. */
+export type SpotFeedStatus = "connecting" | "open" | "closed" | "unavailable";
 
 /**
  * Subscribes once to the backend's live spot-price WebSocket feed and
@@ -35,6 +37,10 @@ export function useSpotFeed(): { data: SpotResponse | null; status: SpotFeedStat
         },
         () => {
           if (cancelled) return;
+          if (!wsUrl("/api/v1/ws/spot")) {
+            setStatus("unavailable"); // nothing to reconnect to
+            return;
+          }
           setStatus("closed");
           const delay = RECONNECT_DELAYS_MS[Math.min(attempt, RECONNECT_DELAYS_MS.length - 1)];
           attempt += 1;

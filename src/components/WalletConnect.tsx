@@ -15,6 +15,8 @@ export function WalletConnect() {
   if (status === "connected" && address) {
     return (
       <button
+        type="button"
+        className="tap"
         onClick={disconnect}
         title="Click to disconnect"
         style={{
@@ -35,7 +37,9 @@ export function WalletConnect() {
         href="https://www.freighter.app/"
         target="_blank"
         rel="noreferrer"
+        className="tap"
         style={{
+          display: "inline-flex", alignItems: "center",
           padding: "5px 12px", background: "transparent", color: "var(--text-mid)",
           border: "1px solid var(--border-strong)", borderRadius: 0, fontSize: 12,
           fontWeight: 600, cursor: "pointer", textDecoration: "none",
@@ -48,6 +52,8 @@ export function WalletConnect() {
 
   return (
     <button
+      type="button"
+      className="tap"
       onClick={connect}
       disabled={status === "connecting"}
       style={{

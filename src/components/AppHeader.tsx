@@ -5,58 +5,104 @@ import { usePathname } from "next/navigation";
 import { Logo } from "./Logo";
 import { useBackendData } from "../lib/context/BackendDataContext";
 import { fmtN } from "../lib/pricing";
+import { EnvironmentSelector } from "./env/EnvironmentSelector";
+import { Skeleton } from "./states";
+import { HelpMenu } from "../features/onboarding/HelpMenu";
 
 const TABS = [
-  { label: "Chain", href: "/options" },
-  { label: "Portfolio", href: "/portfolio" },
-  { label: "History", href: "/history" },
+  { label: "Chain", href: "/options", tour: "nav-chain" },
+  { label: "Portfolio", href: "/portfolio", tour: "portfolio" },
+  { label: "History", href: "/history", tour: "nav-history" },
 ];
 
-export function AppHeader({ children }: { children?: React.ReactNode }) {
-  const pathname = usePathname();
-  // BackendDataProvider already handles the hydration-safety gating
-  // (null token pre-hydration) — this just reads its shared result.
-  const { account } = useBackendData();
-  const balance = account?.balance ?? 0;
-  const collateralLocked = account?.collateral_locked ?? 0;
+/**
+ * The account chip's four states. Never renders a balance it doesn't
+ * have: while loading it's a same-size skeleton, not "$0.00".
+ */
+export function AccountChip() {
+  const { authStatus, accountQuery } = useBackendData();
+  const label = <span style={{ fontSize: 10, color: "var(--text-lo)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Balance</span>;
+
+  if (authStatus === "signed-out") {
+    return (
+      <span data-testid="account-chip" data-state="signed-out" style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+        {label}
+        <span style={{ fontSize: 11, color: "var(--text-lo)" }}>Not signed in</span>
+      </span>
+    );
+  }
+
+  const account = accountQuery.data;
+  if (!account && accountQuery.status === "error") {
+    return (
+      <span data-testid="account-chip" data-state="error" role="alert" style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+        {label}
+        <span style={{ fontSize: 11, color: "var(--put)" }}>Unavailable</span>
+        <button type="button" onClick={accountQuery.refetch} aria-label="Retry loading balance" className="tap" style={{
+          background: "none", border: "1px solid var(--border-default)", color: "var(--text-mid)", fontSize: 11, cursor: "pointer", padding: "0 6px",
+        }}>↻</button>
+      </span>
+    );
+  }
+
+  if (!account) {
+    return (
+      <span data-testid="account-chip" data-state="loading" role="status" aria-busy="true" style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+        {label}
+        <span className="sr-only">Loading balance</span>
+        <Skeleton width={72} height={14} />
+      </span>
+    );
+  }
 
   return (
-    <header style={{
-      height: 44, flexShrink: 0, display: "flex", alignItems: "center",
-      borderBottom: "1px solid var(--border-default)", padding: "0 16px", gap: 16,
-      background: "var(--bg-raised)",
+    <Link href="/portfolio" title="Go to portfolio" data-testid="account-chip" data-state="ready" style={{
+      display: "flex", alignItems: "center", gap: 6, textDecoration: "none", whiteSpace: "nowrap",
     }}>
+      {label}
+      <span className="num" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-hi)" }}>${fmtN(account.balance, 2)}</span>
+      {account.collateral_locked > 0 && (
+        <span className="num" style={{ fontSize: 10, color: "var(--atm)" }}>(${fmtN(account.collateral_locked, 2)} locked)</span>
+      )}
+    </Link>
+  );
+}
+
+/**
+ * `children` are page-specific controls (market selector, expiries,
+ * wallet). On tablets/phones they move to their own horizontally
+ * scrollable row under the nav instead of overflowing the header.
+ */
+export function AppHeader({ children }: { children?: React.ReactNode }) {
+  const pathname = usePathname();
+
+  return (
+    <header className="app-header">
       <Link href="/" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
         <Logo size={16} />
         <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-hi)", fontFamily: "var(--font-serif)" }}>Zenith</span>
       </Link>
-      <div style={{ width: 1, height: 20, background: "var(--border-default)" }} />
-      <div style={{ display: "flex", gap: 2 }}>
-        {TABS.map(tab => (
-          <Link key={tab.href} href={tab.href} style={{
-            padding: "4px 10px", border: "none", cursor: "pointer",
-            fontSize: 12, fontWeight: 600, textDecoration: "none",
-            color: pathname?.startsWith(tab.href) ? "var(--text-hi)" : "var(--text-mid)",
-            borderBottom: pathname?.startsWith(tab.href) ? "2px solid var(--brand)" : "2px solid transparent",
-          }}>
-            {tab.label}
-          </Link>
-        ))}
-      </div>
-      <div style={{ width: 1, height: 20, background: "var(--border-default)" }} />
-
-      <Link href="/portfolio" title="Go to portfolio" style={{
-        display: "flex", alignItems: "center", gap: 6, textDecoration: "none",
-      }}>
-        <span style={{ fontSize: 10, color: "var(--text-lo)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Balance</span>
-        <span className="num" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-hi)" }}>${fmtN(balance,2)}</span>
-        {collateralLocked > 0 && (
-          <span className="num" style={{ fontSize: 10, color: "var(--atm)" }}>(${fmtN(collateralLocked,2)} locked)</span>
-        )}
-      </Link>
-      <div style={{ width: 1, height: 20, background: "var(--border-default)" }} />
-
-      {children}
+      <EnvironmentSelector />
+      <div className="app-header-sep" />
+      <nav className="app-header-nav" aria-label="Terminal">
+        {TABS.map(tab => {
+          const active = pathname?.startsWith(tab.href);
+          return (
+            <Link key={tab.href} href={tab.href} data-tour={tab.tour} aria-current={active ? "page" : undefined} style={{
+              padding: "4px 10px", fontSize: 12, fontWeight: 600, textDecoration: "none",
+              color: active ? "var(--text-hi)" : "var(--text-mid)",
+              borderBottom: active ? "2px solid var(--brand)" : "2px solid transparent",
+            }}>
+              {tab.label}
+            </Link>
+          );
+        })}
+      </nav>
+      <div className="app-header-sep" />
+      <AccountChip />
+      <HelpMenu />
+      <div className="app-header-sep" />
+      <div className="app-header-extra">{children}</div>
     </header>
   );
 }

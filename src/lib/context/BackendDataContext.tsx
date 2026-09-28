@@ -7,9 +7,36 @@ import { useBackendWatchlist } from "../hooks/useBackendWatchlist";
 import { useBackendAlerts } from "../hooks/useBackendAlerts";
 import { useWalletStore } from "../store/wallet";
 import { useHydrated } from "../useHydrated";
-import type { Account } from "../api/types";
+import type { Account, Alert, WatchlistItem } from "../api/types";
+import type { QueryState } from "../query";
+import type { PositionsData } from "../hooks/useBackendPositions";
+
+/**
+ * - unknown:    pre-hydration; the persisted session hasn't been read yet
+ * - signing-in: a wallet connection/backend sign-in is in progress
+ * - signed-out: nobody is signed in — show the connect CTA, not "empty"
+ * - signed-in:  a bearer token is available
+ */
+export type AuthStatus = "unknown" | "signing-in" | "signed-out" | "signed-in";
+
+export function deriveAuthStatus(params: {
+  hydrated: boolean;
+  token: string | null;
+  walletStatus: string;
+  checking: boolean;
+}): AuthStatus {
+  if (!params.hydrated) return "unknown";
+  if (params.token) return "signed-in";
+  if (params.walletStatus === "connecting" || params.checking) return "signing-in";
+  return "signed-out";
+}
 
 interface BackendData {
+  authStatus: AuthStatus;
+  accountQuery: QueryState<Account>;
+  positionsQuery: QueryState<PositionsData>;
+  watchlistQuery: QueryState<WatchlistItem[]>;
+  alertsQuery: QueryState<Alert[]>;
   account: Account | null;
   accountLoading: boolean;
   refreshAccount: () => void;
@@ -46,22 +73,26 @@ const BackendDataContext = createContext<BackendData | null>(null);
 export function BackendDataProvider({ children }: { children: React.ReactNode }) {
   const hydrated = useHydrated();
   const token = useWalletStore(s => s.token);
+  const walletStatus = useWalletStore(s => s.status);
+  const checking = useWalletStore(s => s.checking);
   // Same reasoning as every other persisted-store read on this page tree:
   // pass null until this component's own mount effect has fired, so the
   // first client render matches SSR regardless of when the wallet store
   // itself rehydrates.
   const effectiveToken = hydrated ? token : null;
 
-  const { account, loading: accountLoading, refresh: refreshAccount } = useBackendAccount(effectiveToken);
+  const authStatus = deriveAuthStatus({ hydrated, token, walletStatus, checking });
+
+  const { account, loading: accountLoading, refresh: refreshAccount, query: accountQuery } = useBackendAccount(effectiveToken);
   const {
     positions, greeks, loading: positionsLoading, refresh: refreshPositions,
-    open, openStrategy, close, roll,
+    open, openStrategy, close, roll, query: positionsQuery,
   } = useBackendPositions(effectiveToken);
   const {
     items: watchlist, loading: watchlistLoading,
-    add: addToWatchlist, remove: removeFromWatchlist,
+    add: addToWatchlist, remove: removeFromWatchlist, query: watchlistQuery,
   } = useBackendWatchlist(effectiveToken);
-  const { alerts, loading: alertsLoading, add: addAlert, remove: removeAlert } = useBackendAlerts(effectiveToken);
+  const { alerts, loading: alertsLoading, add: addAlert, remove: removeAlert, query: alertsQuery } = useBackendAlerts(effectiveToken);
 
   // Every position mutation changes the account balance/collateral too —
   // refresh it here rather than trusting every call site to remember to.
@@ -89,6 +120,7 @@ export function BackendDataProvider({ children }: { children: React.ReactNode })
   return (
     <BackendDataContext.Provider
       value={{
+        authStatus, accountQuery, positionsQuery, watchlistQuery, alertsQuery,
         account, accountLoading, refreshAccount,
         positions, greeks, positionsLoading, refreshPositions,
         open: openAndRefreshAccount, openStrategy: openStrategyAndRefreshAccount,
@@ -101,6 +133,9 @@ export function BackendDataProvider({ children }: { children: React.ReactNode })
     </BackendDataContext.Provider>
   );
 }
+
+export { BackendDataContext };
+export type { BackendData };
 
 export function useBackendData(): BackendData {
   const ctx = useContext(BackendDataContext);

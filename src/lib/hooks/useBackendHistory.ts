@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
 import { getHistory } from "../api/history";
 import type { HistoryResponse } from "../api/types";
+import { useAsyncQuery } from "../query";
 
 const EMPTY: HistoryResponse = { trades: [], stats: { trade_count: 0, win_count: 0, loss_count: 0, total_realized_pnl: 0 } };
 
@@ -12,24 +12,10 @@ const EMPTY: HistoryResponse = { trades: [], stats: { trade_count: 0, win_count:
  * sync with each other the way AppHeader's balance did.
  */
 export function useBackendHistory(token: string | null) {
-  const [data, setData] = useState<HistoryResponse>(EMPTY);
-  const [loading, setLoading] = useState(false);
-
-  const refresh = useCallback(() => {
-    if (!token) {
-      setData(EMPTY);
-      return;
-    }
-    setLoading(true);
-    getHistory(token)
-      .then(setData)
-      .catch(() => setData(EMPTY))
-      .finally(() => setLoading(false));
-  }, [token]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  return { ...data, loading, refresh };
+  const query = useAsyncQuery<HistoryResponse>(
+    token ? `history:${token}` : null,
+    () => getHistory(token!),
+    { authed: true }
+  );
+  return { ...(query.data ?? EMPTY), loading: query.status === "loading", refresh: query.refetch, query };
 }

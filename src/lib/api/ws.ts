@@ -10,8 +10,15 @@ import type { SpotResponse } from "./types";
  * closes the socket and suppresses the pending onClose call.
  */
 export function subscribeToSpotFeed(onUpdate: (data: SpotResponse) => void, onClose?: () => void): () => void {
-  const socket = new WebSocket(wsUrl("/api/v1/ws/spot"));
+  const url = wsUrl("/api/v1/ws/spot");
   let closed = false;
+  if (!url) {
+    // No backend for this mode — report "closed" asynchronously, same as a
+    // failed connection, so callers only have one code path to handle.
+    const id = setTimeout(() => { if (!closed) { closed = true; onClose?.(); } }, 0);
+    return () => { closed = true; clearTimeout(id); };
+  }
+  const socket = new WebSocket(url);
 
   socket.onmessage = (event) => {
     try {

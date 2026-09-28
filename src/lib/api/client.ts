@@ -1,8 +1,12 @@
 // Thin fetch wrapper for the zenith-backend API. No caching/retry layer —
 // callers (stores, components) own their own loading/error state, this
 // just standardizes the request/error shape.
+//
+// The base URL comes from the active environment mode (src/lib/env) at call
+// time, not from a module-level constant: switching modes must immediately
+// point every subsequent request at that mode's backend.
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
+import { getCurrentNetwork } from "../env/mode";
 
 export class ApiError extends Error {
   status: number;
@@ -13,11 +17,25 @@ export class ApiError extends Error {
   }
 }
 
+/** Status used for "this mode has no backend configured" — never sent by a server. */
+export const NOT_CONFIGURED_STATUS = 0;
+
+export function apiBaseUrl(): string {
+  const network = getCurrentNetwork();
+  if (!network.apiUrl) {
+    // Refuse rather than fall back to another mode's backend: a missing
+    // mainnet URL must not quietly route mainnet traffic to paper (or the
+    // other way round).
+    throw new ApiError(NOT_CONFIGURED_STATUS, `No backend is configured for ${network.label}.`);
+  }
+  return network.apiUrl;
+}
+
 async function request<T>(path: string, init: RequestInit, token?: string | null): Promise<T> {
   const headers = new Headers(init.headers);
   if (token) headers.set("authorization", `Bearer ${token}`);
 
-  const res = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+  const res = await fetch(`${apiBaseUrl()}${path}`, { ...init, headers });
 
   if (!res.ok) {
     let message = res.statusText || `request failed with ${res.status}`;
@@ -58,6 +76,8 @@ export function apiDelete<T>(path: string, token?: string | null): Promise<T> {
   return request<T>(path, { method: "DELETE" }, token);
 }
 
-export function wsUrl(path: string): string {
-  return `${API_BASE_URL.replace(/^http/, "ws")}${path}`;
+/** WebSocket URL for the active mode, or null when it has no backend configured. */
+export function wsUrl(path: string): string | null {
+  const base = getCurrentNetwork().apiUrl;
+  return base ? `${base.replace(/^http/, "ws")}${path}` : null;
 }

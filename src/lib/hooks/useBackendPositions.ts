@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import {
   closePosition,
   getPortfolioGreeks,
@@ -9,8 +9,15 @@ import {
 } from "../api/positions";
 import { executeStrategy } from "../api/strategies";
 import type { AggregateGreeks, Position } from "../api/types";
+import { useAsyncQuery } from "../query";
 
 const ZERO_GREEKS: AggregateGreeks = { delta: 0, gamma: 0, theta: 0, vega: 0 };
+const NO_POSITIONS: Position[] = [];
+
+export interface PositionsData {
+  positions: Position[];
+  greeks: AggregateGreeks;
+}
 
 /**
  * Open positions + aggregate portfolio Greeks from the backend, plus the
@@ -21,32 +28,17 @@ const ZERO_GREEKS: AggregateGreeks = { delta: 0, gamma: 0, theta: 0, vega: 0 };
  * why `token` should be `null` pre-hydration.
  */
 export function useBackendPositions(token: string | null) {
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [greeks, setGreeks] = useState<AggregateGreeks>(ZERO_GREEKS);
-  const [loading, setLoading] = useState(false);
-
-  const refresh = useCallback(() => {
-    if (!token) {
-      setPositions([]);
-      setGreeks(ZERO_GREEKS);
-      return;
-    }
-    setLoading(true);
-    Promise.all([listPositions(token, { status: "open" }), getPortfolioGreeks(token)])
-      .then(([pos, g]) => {
-        setPositions(pos);
-        setGreeks(g);
-      })
-      .catch(() => {
-        setPositions([]);
-        setGreeks(ZERO_GREEKS);
-      })
-      .finally(() => setLoading(false));
-  }, [token]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  const query = useAsyncQuery<PositionsData>(
+    token ? `positions:${token}` : null,
+    () =>
+      Promise.all([listPositions(token!, { status: "open" }), getPortfolioGreeks(token!)])
+        .then(([positions, greeks]) => ({ positions, greeks })),
+    { authed: true }
+  );
+  const refresh = query.refetch;
+  const positions = query.data?.positions ?? NO_POSITIONS;
+  const greeks = query.data?.greeks ?? ZERO_GREEKS;
+  const loading = query.status === "loading";
 
   const open = useCallback(
     async (params: OpenPositionParams) => {
@@ -88,5 +80,5 @@ export function useBackendPositions(token: string | null) {
     [token, refresh]
   );
 
-  return { positions, greeks, loading, refresh, open, openStrategy, close, roll };
+  return { positions, greeks, loading, refresh, open, openStrategy, close, roll, query };
 }

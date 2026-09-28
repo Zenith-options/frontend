@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { createAlert, deleteAlert, getAlerts } from "../api/alerts";
 import type { Alert, AlertCondition } from "../api/types";
+import { useAsyncQuery } from "../query";
+
+const NO_ALERTS: Alert[] = [];
 
 /**
  * Alerts from the backend, polled every 5s so a wallet's other tabs (and
@@ -10,27 +13,14 @@ import type { Alert, AlertCondition } from "../api/types";
  * — see useBackendAccount's doc comment for why.
  */
 export function useBackendAlerts(token: string | null) {
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const refresh = useCallback(() => {
-    if (!token) {
-      setAlerts([]);
-      return;
-    }
-    setLoading(true);
-    getAlerts(token)
-      .then(setAlerts)
-      .catch(() => setAlerts([]))
-      .finally(() => setLoading(false));
-  }, [token]);
-
-  useEffect(() => {
-    refresh();
-    if (!token) return;
-    const id = setInterval(refresh, 5000);
-    return () => clearInterval(id);
-  }, [refresh, token]);
+  const query = useAsyncQuery<Alert[]>(
+    token ? `alerts:${token}` : null,
+    () => getAlerts(token!),
+    { authed: true, pollMs: 5000 }
+  );
+  const refresh = query.refetch;
+  const alerts = query.data ?? NO_ALERTS;
+  const loading = query.status === "loading";
 
   const add = useCallback(
     async (params: { underlying: string; condition: AlertCondition; targetPrice: number }) => {
@@ -51,5 +41,5 @@ export function useBackendAlerts(token: string | null) {
     [token, refresh]
   );
 
-  return { alerts, loading, refresh, add, remove };
+  return { alerts, loading, refresh, add, remove, query };
 }
