@@ -103,6 +103,10 @@ function OptionsPageContent() {
   },[favorites,hydrated]);
 
   const [chain,setChain]=useState<ChainRow[]>([]);
+  // Which underlying `chain` currently holds: after a symbol switch the
+  // previous symbol's rows stay on screen until the new fetch lands, and
+  // strategy strikes must not be resolved against them.
+  const [chainSym,setChainSym]=useState(sym);
   const [chainLoading,setChainLoading]=useState(true);
 
   useEffect(()=>{
@@ -110,6 +114,7 @@ function OptionsPageContent() {
     setChainLoading(true);
     getChain(sym,expiry.days).then(entries=>{
       if(cancelled)return;
+      setChainSym(sym);
       setChain(entries.map(e=>({
         strike:e.strike,
         call:{premium:e.call.premium,delta:e.call.delta,gamma:e.call.gamma,theta:e.call.theta,vega:e.call.vega,iv:e.call.iv},
@@ -120,6 +125,7 @@ function OptionsPageContent() {
       // Backend unreachable — fall back to the local Black-Scholes calc
       // so the chain still renders something usable.
       if(cancelled)return;
+      setChainSym(sym);
       setChain(Array.from({length:21},(_,i)=>{
         const n=i-10;
         const strike=Math.round(spot*(1+n*0.04)*10000)/10000;
@@ -138,6 +144,7 @@ function OptionsPageContent() {
   useEffect(()=>{
     const id=setInterval(()=>{
       getChain(sym,expiry.days).then(entries=>{
+        setChainSym(sym);
         setChain(entries.map(e=>({
           strike:e.strike,
           call:{premium:e.call.premium,delta:e.call.delta,gamma:e.call.gamma,theta:e.call.theta,vega:e.call.vega,iv:e.call.iv},
@@ -177,7 +184,7 @@ function OptionsPageContent() {
   // (snapped to the chain's listed strikes) when a template is picked or
   // the expiry changes, not on every spot tick, so a leg doesn't drift
   // between strikes while the user is looking at it.
-  const listedStrikes=useMemo(()=>chain.map(r=>r.strike),[chain]);
+  const listedStrikes=useMemo(()=>chainSym===sym?chain.map(r=>r.strike):[],[chain,chainSym,sym]);
   const hasListedStrikes=listedStrikes.length>0;
   const expiryIndex=Math.max(0,expiries.findIndex(e=>e.days===expiry.days));
 
@@ -198,7 +205,13 @@ function OptionsPageContent() {
     const template=STRATEGY_TEMPLATES.find(t=>t.id===builder.templateId);
     if(template)setBuilder(resolveTemplate(template));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[expiry.days,expiries,hasListedStrikes]);
+  },[expiry.days,expiries,hasListedStrikes,sym]);
+
+  // Hand-edited/finder legs carry strikes for one underlying; they mean
+  // nothing after switching to another.
+  useEffect(()=>{
+    setBuilder(b=>b?.source==="custom"?null:b);
+  },[sym]);
 
   const loadCandidate=(c:Candidate)=>{
     setRiskAcknowledged(false);
