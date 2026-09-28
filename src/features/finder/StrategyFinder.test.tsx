@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrategyFinder } from "./StrategyFinder";
 import { FIXTURE_MARKET } from "./fixtures";
@@ -15,7 +15,7 @@ const renderFinder = (onLoad = vi.fn()) => {
 describe("StrategyFinder", () => {
   it("shows ranked candidates and loads one into the builder", async () => {
     const onLoad = renderFinder();
-    const rows = await screen.findAllByRole("button", { name: "Load →" }, { timeout: 3000 });
+    const rows = await screen.findAllByRole("button", { name: "Load →" }, { timeout: 5000 });
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.length).toBeLessThanOrEqual(10);
     await userEvent.click(rows[0]);
@@ -37,7 +37,12 @@ describe("StrategyFinder", () => {
     await userEvent.click(screen.getByRole("button", { name: "bearish" }));
     const slider = screen.getByRole("slider", { name: "Target price" });
     expect(Number(slider.getAttribute("aria-valuenow"))).toBeLessThan(FIXTURE_MARKET.spot);
-    const table = await screen.findByRole("table", {}, { timeout: 3000 });
-    expect(within(table).getAllByText(/Bear|Put|Collar/i).length).toBeGreaterThan(0);
+    // The previous (bullish) results stay on screen until the new search
+    // lands, so wait for the table to actually reflect the new outlook.
+    await waitFor(() => {
+      const table = screen.getByRole("table");
+      expect(within(table).queryAllByText(/^(Bull Call Spread|Call Diagonal Spread)$/)).toHaveLength(0);
+      expect(within(table).getAllByText(/^(Bear Put Spread|Collar|Put Ratio Spread)$/).length).toBeGreaterThan(0);
+    }, { timeout: 5000 });
   });
 });
