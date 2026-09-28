@@ -4,6 +4,8 @@ import "./globals.css";
 import { StoreHydrator } from "../components/StoreHydrator";
 import { BackendDataProvider } from "../lib/context/BackendDataContext";
 import { SpotFeedProvider } from "../lib/context/SpotFeedContext";
+import { WalletSelectModal } from "../components/WalletConnect";
+import { TransactionTracker } from "../components/TransactionTracker";
 
 const fraunces = Fraunces({
   subsets: ["latin"], weight: ["400","500","600","700"],
@@ -31,7 +33,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <StoreHydrator />
         <SpotFeedProvider>
-          <BackendDataProvider>{children}</BackendDataProvider>
+          <BackendDataProvider>
+            {children}
+            {/* Global modals — rendered at root so they're available on every page */}
+            <WalletSelectModal />
+            <TransactionTracker />
+          </BackendDataProvider>
         </SpotFeedProvider>
       </body>
     </html>

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Logo } from "./Logo";
 import { useBackendData } from "../lib/context/BackendDataContext";
 import { fmtN } from "../lib/pricing";
+import { TrackerHeaderButton } from "./TransactionTracker";
 
 const TABS = [
   { label: "Chain", href: "/options" },
@@ -55,6 +56,9 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         )}
       </Link>
       <div style={{ width: 1, height: 20, background: "var(--border-default)" }} />
+
+      {/* Global transaction tracker indicator */}
+      <TrackerHeaderButton />
 
       {children}
     </header>

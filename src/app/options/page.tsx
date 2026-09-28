@@ -23,8 +23,16 @@ import { StrategyPicker } from "../../components/StrategyPicker";
 import { MultiLegPayoffDiagram } from "../../components/MultiLegPayoffDiagram";
 import { VolSurfaceHeatmap } from "../../components/VolSurfaceHeatmap";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { FeeSurface } from "../../components/FeeSurface";
 import { type StrategyTemplate } from "../../lib/strategies";
 import { netPremium, type PricedLeg } from "../../lib/payoff";
+import { executeContractCall } from "../../lib/soroban/pipeline";
+import { createPipelineEventHandler } from "../../lib/store/tracker";
+import { useTrackerStore } from "../../lib/store/tracker";
+import type { SorobanFeeBreakdown } from "../../lib/soroban/types";
+
+const ENABLE_ONCHAIN = process.env.NEXT_PUBLIC_ENABLE_ONCHAIN === "true";
+const OPTIONS_CONTRACT = process.env.NEXT_PUBLIC_OPTIONS_CONTRACT ?? "";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
@@ -50,8 +58,15 @@ function OptionsPageContent() {
   const [showTradeConfirm, setShowTradeConfirm] = useState(false);
   const [tradeError, setTradeError] = useState<string|null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Simulated fee breakdown — populated during onchain pipeline "awaiting_signature" step
+  const [simulatedFees, setSimulatedFees] = useState<SorobanFeeBreakdown|null>(null);
+  const [feePriority, setFeePriority] = useState<"standard"|"fast">("standard");
+  // Cancellation controller — created fresh per pipeline invocation
+  const abortRef = useRef<AbortController|null>(null);
+  const { setDrawerOpen } = useTrackerStore();
   const hydrated = useHydrated();
   const token = useWalletStore(s=>s.token);
+  const getSigner = useWalletStore(s=>s.getSigner);
   const {account,positions:backendPositions,greeks:portGreeks,watchlist,
     open:openBackendPosition,openStrategy:openBackendStrategy} = useBackendData();
   const favorites = useMemo(()=>watchlist.map(w=>w.underlying),[watchlist]);
@@ -198,6 +213,66 @@ function OptionsPageContent() {
     if(!trade||!tradeGreeks||insufficientFunds||submitting)return;
     setSubmitting(true);
     setTradeError(null);
+
+    if(ENABLE_ONCHAIN&&OPTIONS_CONTRACT){
+      // On-chain path: pipeline → sign → submit → poll → then reconcile with backend
+      let signer;
+      try{ signer=getSigner(); }catch{
+        setTradeError("Wallet not connected");
+        setSubmitting(false);
+        return;
+      }
+      const ctrl=new AbortController();
+      abortRef.current=ctrl;
+      const txLabel=`${trade.mode==="write"?"Write":"Buy"} ${sym} ${trade.side.toUpperCase()} K=${fmtK(trade.row.strike)}`;
+      const retryParams={
+        contract:OPTIONS_CONTRACT,
+        method:"open_position",
+        argsJson:JSON.stringify([sym,trade.row.strike,expiry.days,trade.side,trade.mode==="write"?"short":"long",qty]),
+        label:txLabel,
+        priority:feePriority,
+        meta:{label:txLabel,underlying:sym},
+      };
+      const handler=createPipelineEventHandler(txLabel.toLowerCase().replace(/\s+/g,"-")+"-"+Date.now(),txLabel,retryParams);
+      setShowTradeConfirm(false);
+      setDrawerOpen(true);
+      try{
+        // Intercept events to show fees in the confirm dialog during simulation
+        const wrappedHandler=(event: import("../../lib/soroban/types").PipelineEvent)=>{
+          handler(event);
+          if(event.stage==="awaiting_signature"&&event.fees){
+            setSimulatedFees(event.fees);
+          }
+        };
+        const xlmUsdPrice=spotData?.prices["XLM"]??null;
+        await executeContractCall(
+          {contract:OPTIONS_CONTRACT,method:"open_position",
+           args:[sym,trade.row.strike,expiry.days,trade.side,trade.mode==="write"?"short":"long",qty],
+           signer,priority:feePriority,signal:ctrl.signal,
+           meta:{label:txLabel,underlying:sym}},
+          wrappedHandler,
+          xlmUsdPrice
+        );
+        // Backend reconciliation after on-chain success
+        try{
+          await openBackendPosition({
+            underlying:sym,strike:trade.row.strike,expiryDays:expiry.days,
+            optionType:trade.side,positionType:trade.mode==="write"?"short":"long",contracts:qty,
+          });
+        }catch{/* non-fatal: position recorded on-chain */}
+        setTrade(null);
+        setViewTab("positions");
+      }catch(err){
+        if((err as {cancelled?:boolean}).cancelled)return;
+        setTradeError(err instanceof Error?err.message:"Transaction failed");
+      }finally{
+        setSubmitting(false);
+        abortRef.current=null;
+      }
+      return;
+    }
+
+    // Default paper-trading path
     try{
       await openBackendPosition({
         underlying:sym,strike:trade.row.strike,expiryDays:expiry.days,
@@ -716,7 +791,12 @@ function OptionsPageContent() {
           title={`${trade.mode==="write"?"Write":"Buy"} ${sym} ${trade.side.toUpperCase()}`}
           confirmLabel={submitting?"Submitting…":`Confirm ${trade.mode==="write"?"Write":"Buy"}`}
           onConfirm={execTrade}
-          onCancel={()=>setShowTradeConfirm(false)}
+          onCancel={()=>{
+            // Cancel any in-flight pipeline step before signature
+            abortRef.current?.abort();
+            setShowTradeConfirm(false);
+            setSimulatedFees(null);
+          }}
           disabled={insufficientFunds||notSignedIn||submitting||!!tradeError}
           disabledReason={tradeError??(insufficientFunds?`Insufficient balance ${trade.mode==="write"?"to post collateral":"to cover premium"}.`:undefined)}
         >
@@ -732,6 +812,18 @@ function OptionsPageContent() {
               <span className="num" style={{color:"var(--text-hi)"}}>{v}</span>
             </div>
           ))}
+          {ENABLE_ONCHAIN&&(
+            simulatedFees?(
+              <FeeSurface
+                fees={simulatedFees}
+                onPriorityChange={(p)=>setFeePriority(p)}
+              />
+            ):(
+              <div style={{marginTop:8,fontSize:11,color:"var(--text-lo)",fontStyle:"italic"}}>
+                Simulating transaction to calculate fees…
+              </div>
+            )
+          )}
         </ConfirmDialog>
       )}
 
