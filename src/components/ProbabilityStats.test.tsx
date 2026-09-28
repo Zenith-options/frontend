@@ -14,7 +14,7 @@ const call: PricedLeg = {
 describe("ProbabilityStats", () => {
   it("shows PoP, P(ITM), EV and σ ranges for a single leg", () => {
     render(<ProbabilityStats legs={[call]} spot={100} vol={0.6} t={30 / 365} />);
-    for (const label of ["Prob. of Profit", "Prob. ITM", "Expected Value", "1σ Range", "2σ Range"]) {
+    for (const label of ["PROB. OF PROFIT", "PROB. ITM", "EXPECTED VALUE", "1σ RANGE", "2σ RANGE"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
   });
@@ -22,7 +22,7 @@ describe("ProbabilityStats", () => {
   it("omits P(ITM) for multi-leg structures", () => {
     const put: PricedLeg = { ...call, side: "put" };
     render(<ProbabilityStats legs={[call, put]} spot={100} vol={0.6} t={30 / 365} />);
-    expect(screen.queryByText("Prob. ITM")).not.toBeInTheDocument();
+    expect(screen.queryByText("PROB. ITM")).not.toBeInTheDocument();
   });
 
   it("documents its assumptions in an accessible tooltip", async () => {
@@ -36,7 +36,7 @@ describe("ProbabilityStats", () => {
 
   it("switches between flat and smile vol models", async () => {
     render(<ProbabilityStats legs={[{ ...call, strike: 80 }]} spot={100} vol={0.6} t={30 / 365} />);
-    const itm = () => screen.getByText("Prob. ITM").nextSibling?.textContent;
+    const itm = () => screen.getByText("PROB. ITM").nextSibling?.textContent;
     const flat = itm();
     await userEvent.click(screen.getByRole("button", { name: "Smile" }));
     expect(screen.getByRole("button", { name: "Smile" })).toHaveAttribute("aria-pressed", "true");

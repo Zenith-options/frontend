@@ -46,8 +46,8 @@ export function ProbabilityStats({ legs, spot, vol, t, note }: Props) {
     { label: "Prob. of Profit", value: pct(stats.pop), color: "var(--text-hi)" },
     ...(stats.probItm !== null ? [{ label: "Prob. ITM", value: pct(stats.probItm), color: "var(--text-hi)" }] : []),
     { label: "Expected Value", value: fmtEv(stats.ev), color: stats.ev >= 0 ? "var(--call)" : "var(--put)" },
-    { label: "1σ Range", value: `${fmtSpot(stats.move1.lower)} – ${fmtSpot(stats.move1.upper)}`, color: "var(--text-mid)" },
-    { label: "2σ Range", value: `${fmtSpot(stats.move2.lower)} – ${fmtSpot(stats.move2.upper)}`, color: "var(--text-mid)" },
+    { label: "1σ Range", value: `${fmtSpot(stats.move1.lower)} – ${fmtSpot(stats.move1.upper)}`, color: "var(--text-mid)", wide: true },
+    { label: "2σ Range", value: `${fmtSpot(stats.move2.lower)} – ${fmtSpot(stats.move2.upper)}`, color: "var(--text-mid)", wide: true },
   ];
 
   return (
@@ -97,9 +97,10 @@ export function ProbabilityStats({ legs, spot, vol, t, note }: Props) {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px" }}>
         {items.map(item => (
-          <div key={item.label}>
-            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-lo)", marginBottom: 2 }}>
-              {item.label}
+          <div key={item.label} style={"wide" in item ? { gridColumn: "1 / -1" } : undefined}>
+            {/* Uppercased by hand, not text-transform — CSS would turn σ into Σ. */}
+            <div style={{ fontSize: 9, letterSpacing: "0.06em", color: "var(--text-lo)", marginBottom: 2 }}>
+              {item.label.replace(/[a-z]/g, c => c.toUpperCase())}
             </div>
             <div className="num" style={{ fontSize: 12, fontWeight: 600, color: item.color }}>{item.value}</div>
           </div>

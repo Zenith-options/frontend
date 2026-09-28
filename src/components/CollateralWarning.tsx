@@ -30,6 +30,7 @@ export function CollateralWarningBadge({ utilization, thresholds }: { utilizatio
       title={`Collateral utilization is at or above your ${level} threshold (${Math.round(thresholds[level] * 100)}%)`}
       style={{
         display: "flex", alignItems: "center", gap: 5, padding: "2px 8px", textDecoration: "none",
+        whiteSpace: "nowrap", flexShrink: 0,
         border: `1px solid ${LEVEL_COLOR[level]}`, color: LEVEL_COLOR[level],
         background: level === "critical" ? "var(--put-dim)" : "var(--atm-dim)", fontSize: 10, fontWeight: 600,
       }}

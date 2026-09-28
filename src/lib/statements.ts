@@ -465,19 +465,20 @@ export async function renderStatementPdf(doc: StatementDocument): Promise<Uint8A
   by -= 8;
   first.drawLine({ start: { x: bx, y: by }, end: { x: W - M, y: by }, thickness: 0.5, color: rule });
   by -= 14;
-  const ucols = [bx, bx + 110, bx + 190, bx + 270, W - M];
+  // Right edges of the numeric columns (the first column is left-aligned at bx).
+  const uRight = [0, bx + 100, bx + 175, bx + 255, W - M];
   ["Underlying", "Lots", "Proceeds", "Cost basis", "Realized P&L"].forEach((h, i) =>
-    i === 0 ? text(first, h, ucols[0], by, 8, bold, muted) : textRight(first, h, i === 4 ? ucols[4] : ucols[i] + 60, by, 8, bold, muted));
+    i === 0 ? text(first, h, bx, by, 8, bold, muted) : textRight(first, h, uRight[i], by, 8, bold, muted));
   by -= 14;
   if (summary.byUnderlying.length === 0) {
     text(first, "No realized lots in this period.", bx, by, 9, regular, muted);
   }
   for (const u of summary.byUnderlying) {
-    text(first, u.underlying, ucols[0], by, 9);
-    textRight(first, String(u.trades), ucols[1] + 60, by, 9);
-    textRight(first, fmtPdfAmount(u.proceeds), ucols[2] + 60, by, 9);
-    textRight(first, fmtPdfAmount(u.costBasis), ucols[3] + 60, by, 9);
-    textRight(first, fmtPdfAmount(u.realizedPnl), ucols[4], by, 9, regular, pnlColor(u.realizedPnl));
+    text(first, u.underlying, bx, by, 9);
+    textRight(first, String(u.trades), uRight[1], by, 9);
+    textRight(first, fmtPdfAmount(u.proceeds), uRight[2], by, 9);
+    textRight(first, fmtPdfAmount(u.costBasis), uRight[3], by, 9);
+    textRight(first, fmtPdfAmount(u.realizedPnl), uRight[4], by, 9, regular, pnlColor(u.realizedPnl));
     by -= 13;
   }
 

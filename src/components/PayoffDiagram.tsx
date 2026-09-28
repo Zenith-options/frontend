@@ -119,7 +119,9 @@ export function PayoffDiagram({
   const color = isCall ? "#5C9A6B" : "#B65640";
 
   return (
-    <div style={{ width, height, position: "relative" }}>
+    // Non-compact grows to fit the legend below the chart rather than
+    // letting it overflow into whatever sits underneath.
+    <div style={{ width, height: compact ? height : undefined, minHeight: height, position: "relative" }}>
       <svg
         width={width}
         height={height}

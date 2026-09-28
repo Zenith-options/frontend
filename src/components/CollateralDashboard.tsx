@@ -371,7 +371,7 @@ function WhatIfPanel({ summary, items, spots, vols, thresholds }: {
               <span aria-hidden>⚠ </span>
               {result.insufficient
                 ? "Insufficient buying power — the backend would reject this trade."
-                : `Would put utilization at ${LEVEL_LABEL[afterLevel].toLowerCase()} (≥ ${Math.round(thresholds[afterLevel as "warning" | "critical"] * 100)}%).`}
+                : `Utilization after this trade: ${LEVEL_LABEL[afterLevel].toLowerCase()} (≥ ${Math.round(thresholds[afterLevel as "warning" | "critical"] * 100)}% threshold).`}
             </div>
           )}
         </div>
