@@ -26,6 +26,7 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { type StrategyTemplate } from "../../lib/strategies";
 import { netPremium, type PricedLeg } from "../../lib/payoff";
 import { ProbabilityStats } from "../../components/ProbabilityStats";
+import { ShareButton } from "../../components/ShareButton";
 
 interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
 interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
@@ -515,6 +516,9 @@ function OptionsPageContent() {
                     cursor:strategyInsufficientFunds||notSignedIn?"default":"pointer",opacity:strategyInsufficientFunds||notSignedIn?0.5:1}}>
                     Execute {selectedStrategy.name} ({pricedLegs.length} legs)
                   </button>
+                  <span style={{marginLeft:8,verticalAlign:"bottom"}}>
+                    <ShareButton request={{kind:"strategy",templateId:selectedStrategy.id,underlying:sym,expiryDays:expiry.days,contracts:qty}}/>
+                  </span>
                   {strategyInsufficientFunds&&(
                     <div style={{marginTop:6,fontSize:11,color:"var(--put)"}}>
                       Insufficient balance — needs ${fmtN(strategyRequiredFunds,2)}, have ${fmtN(balance,2)}.

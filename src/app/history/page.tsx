@@ -11,6 +11,7 @@ import { fmtN, fmtK } from "../../lib/pricing";
 import { toCsv, downloadCsv } from "../../lib/csv";
 import { ExportButton } from "../../components/ExportButton";
 import { StatementsPanel } from "../../components/StatementsPanel";
+import { ShareButton } from "../../components/ShareButton";
 import { useBackendData } from "../../lib/context/BackendDataContext";
 
 function fmtDate(iso: string | null) {
@@ -104,7 +105,7 @@ export default function HistoryPage() {
               <table style={{width:"100%",borderCollapse:"collapse",minWidth:900}}>
                 <thead>
                   <tr style={{borderBottom:"1px solid var(--border-default)"}}>
-                    {["Closed","Asset","Type","Side","Status","Strike","Expiry","Qty","Entry","Close","Realized P&L"].map(h=>(
+                    {["Closed","Asset","Type","Side","Status","Strike","Expiry","Qty","Entry","Close","Realized P&L",""].map(h=>(
                       <th key={h} style={{padding:"8px 10px",fontSize:10,fontWeight:500,textTransform:"uppercase",
                         letterSpacing:"0.05em",color:"var(--text-lo)",textAlign:"right",background:"var(--bg-overlay)"}}>{h}</th>
                     ))}
@@ -140,6 +141,9 @@ export default function HistoryPage() {
                       <td className="num" style={{padding:"8px 10px",fontSize:11,textAlign:"right",fontWeight:600,
                         color:r.realized_pnl===null?"var(--text-lo)":r.realized_pnl>=0?"var(--call)":"var(--put)"}}>
                         {r.realized_pnl===null?"—":`${r.realized_pnl>=0?"+":"−"}$${fmtN(Math.abs(r.realized_pnl),2)}`}
+                      </td>
+                      <td style={{padding:"6px 10px",textAlign:"right"}}>
+                        {r.realized_pnl!==null&&<ShareButton compact request={{kind:"trade",positionId:r.id,underlying:r.underlying}}/>}
                       </td>
                     </tr>
                   ))}
