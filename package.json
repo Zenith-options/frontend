@@ -13,7 +13,8 @@
     "react": "^18",
     "react-dom": "^18",
     "@stellar/freighter-api": "^2.0.0",
-    "zustand": "^4.5.2"
+    "zustand": "^4.5.2",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "typescript": "^5",
