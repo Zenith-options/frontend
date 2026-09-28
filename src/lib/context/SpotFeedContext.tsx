@@ -1,15 +1,16 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import { useSpotFeed, type SpotFeedStatus } from "../hooks/useSpotFeed";
+import { useSpotFeed, type SessionBuffer, type SpotFeedStatus } from "../hooks/useSpotFeed";
 import type { SpotResponse } from "../api/types";
 
 interface SpotFeedData {
   data: SpotResponse | null;
   status: SpotFeedStatus;
+  session: SessionBuffer;
 }
 
-const SpotFeedContext = createContext<SpotFeedData | null>(null);
+export const SpotFeedContext = createContext<SpotFeedData | null>(null);
 
 /**
  * One shared WebSocket connection for the whole app, mounted at the

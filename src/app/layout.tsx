@@ -6,6 +6,7 @@ import { BackendDataProvider } from "../lib/context/BackendDataContext";
 import { SpotFeedProvider } from "../lib/context/SpotFeedContext";
 import { NotificationsProvider } from "../lib/notifications/NotificationsContext";
 import { NotificationProducers } from "../lib/notifications/NotificationProducers";
+import { AppWatchlistsProvider } from "../lib/watchlists/WatchlistsContext";
 
 const fraunces = Fraunces({
   subsets: ["latin"], weight: ["400","500","600","700"],
@@ -36,7 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <BackendDataProvider>
             <NotificationsProvider>
               <NotificationProducers />
-              {children}
+              <AppWatchlistsProvider>{children}</AppWatchlistsProvider>
             </NotificationsProvider>
           </BackendDataProvider>
         </SpotFeedProvider>

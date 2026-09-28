@@ -105,6 +105,17 @@ export interface WatchlistItem {
   added_at: string;
 }
 
+/** A named, ordered watchlist (v2 multi-list API — see api/watchlists.ts). */
+export interface NamedWatchlist {
+  id: string;
+  name: string;
+  /** Ordered; the order is the display order. No duplicates. */
+  symbols: string[];
+  /** Sort key among the wallet's lists, ascending. */
+  position: number;
+  updated_at: string;
+}
+
 export type AlertCondition = "above" | "below";
 
 export interface Alert {

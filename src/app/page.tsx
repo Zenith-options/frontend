@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { PayoffDiagram } from "../components/PayoffDiagram";
 import { Logo } from "../components/Logo";
+import { NotificationBell } from "../components/NotificationBell";
+import { WatchlistMenu } from "../components/watchlist/WatchlistMenu";
 import { bs, smileVol, fmtN, fmtK, MARKETS } from "../lib/pricing";
 import { useBackendData } from "../lib/context/BackendDataContext";
 
@@ -51,6 +53,8 @@ export default function Home() {
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <WatchlistMenu align="right"/>
+          <NotificationBell/>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
             <div style={{width:6,height:6,borderRadius:"50%",background:"var(--call)"}}/>
             <span style={{fontSize:11,color:"var(--text-lo)"}}>Stellar Testnet</span>

@@ -54,6 +54,14 @@ export function apiPost<T>(path: string, body?: unknown, token?: string | null):
   );
 }
 
+export function apiPatch<T>(path: string, body: unknown, token?: string | null): Promise<T> {
+  return request<T>(
+    path,
+    { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
+    token
+  );
+}
+
 export function apiDelete<T>(path: string, token?: string | null): Promise<T> {
   return request<T>(path, { method: "DELETE" }, token);
 }
