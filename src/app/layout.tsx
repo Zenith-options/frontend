@@ -4,6 +4,10 @@ import "./globals.css";
 import { PwaShell } from "../components/PwaShell";
 import { StoreHydrator } from "../components/StoreHydrator";
 import { BackendDataProvider } from "../lib/context/BackendDataContext";
+import { SessionBanner } from "../components/SessionBanner";
+import { Toaster } from "../components/toast/Toaster";
+import { ContractErrorOverlay } from "../components/ContractErrorOverlay";
+import { QueryProvider } from "../components/QueryProvider";
 import { SpotFeedProvider } from "../lib/context/SpotFeedContext";
 
 const fraunces = Fraunces({
@@ -34,10 +38,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${fraunces.variable} ${plexSans.variable} ${jetbrainsMono.variable}`}>
       <body>
         <StoreHydrator />
-        <SpotFeedProvider>
-          <BackendDataProvider>{children}</BackendDataProvider>
-          <PwaShell />
-        </SpotFeedProvider>
+        <Toaster />
+        <SessionBanner />
+        <ContractErrorOverlay />
+        <QueryProvider>
+          <SpotFeedProvider>
+            <BackendDataProvider>{children}</BackendDataProvider>
+            <PwaShell />
+          </SpotFeedProvider>
+        </QueryProvider>
       </body>
     </html>
   );
