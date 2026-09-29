@@ -303,7 +303,7 @@ function EditProfileForm({ token, initial, onSaved, onCancel }: EditFormProps) {
 // ── Page ──────────────────────────────────────────────────────────────────
 export default function DelegateDirectoryPage() {
   const hydrated = useHydrated();
-  const token = useWalletStore(s => s.token);
+  const token = useWalletStore(s => s.session);
 
   const [delegates, setDelegates] = useState<DelegateSummary[]>([]);
   const [total, setTotal] = useState(0);

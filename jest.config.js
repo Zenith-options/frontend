@@ -18,7 +18,7 @@ const config = {
     "**/__tests__/**/*.(ts|tsx|js|jsx)",
     "**/*.(test|spec).(ts|tsx|js|jsx)",
   ],
-  testPathIgnorePatterns: ["/node_modules/", "/.next/"],
+  testPathIgnorePatterns: ["/node_modules/", "/.next/", "/tests/e2e/"],
   moduleDirectories: ["node_modules", "<rootDir>/src"],
   coverageThreshold: {
     // Clear-signing comparator (#119): every branch is a security check.

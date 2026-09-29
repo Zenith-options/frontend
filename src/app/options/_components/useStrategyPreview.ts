@@ -16,7 +16,7 @@ export function useStrategyPreview({sym,expiryDays,spot,marketVol,qty,onExecuted
   const [showStrategyConfirm,setShowStrategyConfirm]=useState(false);
   const [tradeError,setTradeError]=useState<string|null>(null);
   const [submitting,setSubmitting]=useState(false);
-  const token=useWalletStore(s=>s.token);
+  const token=useWalletStore(s=>s.session);
   const {account,openStrategy:openBackendStrategy}=useBackendData();
   const balance=account?.balance ?? 0;
   const t=expiryDays/365;

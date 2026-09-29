@@ -43,7 +43,7 @@ function saveNotified(m: Record<string, { h24?: boolean; h1?: boolean }>) {
 }
 
 export default function CalendarPage() {
-  const token = useWalletStore(s => s.token);
+  const token = useWalletStore(s => s.session);
   const { positions: openPositions } = useBackendData();
   const { data: spotFeed } = useSpotFeedContext();
   const spots = spotFeed?.prices ?? Object.fromEntries(MARKETS.map(m => [m.sym, m.price]));

@@ -12,7 +12,7 @@ export function useTradeTicket({trade,sym,expiry,spot,contracts,onDone}:Args){
   const [showTradeConfirm,setShowTradeConfirm]=useState(false);
   const [tradeError,setTradeError]=useState<string|null>(null);
   const [submitting,setSubmitting]=useState(false);
-  const token=useWalletStore(s=>s.token);
+  const token=useWalletStore(s=>s.session);
   const {account,open:openBackendPosition}=useBackendData();
   const balance=account?.balance ?? 0;
   const qty=Math.max(0.01,parseFloat(contracts)||1);

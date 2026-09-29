@@ -63,7 +63,7 @@ function captureAttributionFromUrl(searchParams: URLSearchParams) {
 
 function ReferralsContent() {
   const hydrated = useHydrated();
-  const token = useWalletStore(s => s.token);
+  const token = useWalletStore(s => s.session);
   const wallet = useWalletStore(s => s.address);
   const searchParams = useSearchParams();
 

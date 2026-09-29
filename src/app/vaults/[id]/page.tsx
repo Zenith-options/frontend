@@ -42,7 +42,7 @@ function fmtDateShort(iso: string) {
 
 export default function VaultDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const token = useWalletStore(s => s.token);
+  const token = useWalletStore(s => s.session);
 
   const [vault, setVault] = useState<VaultDetail | null>(null);
   const [loading, setLoading] = useState(true);

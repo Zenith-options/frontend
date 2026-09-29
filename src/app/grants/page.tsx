@@ -290,7 +290,7 @@ type Tab = "programs" | "my_applications" | "approved";
 
 export default function GrantsPage() {
   const hydrated = useHydrated();
-  const token = useWalletStore(s => s.token);
+  const token = useWalletStore(s => s.session);
 
   const [tab, setTab] = useState<Tab>("programs");
   const [programs, setPrograms] = useState<GrantProgram[]>([]);

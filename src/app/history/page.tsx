@@ -23,7 +23,7 @@ function fmtDate(iso: string | null) {
 export default function HistoryPage() {
   const isCompact = useIsCompact();
   const hydrated = useHydrated();
-  const token = useWalletStore(s => s.token);
+  const token = useWalletStore(s => s.session);
   const { trades, stats } = useBackendHistory(hydrated ? token : null);
 
   return (

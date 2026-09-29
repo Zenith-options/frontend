@@ -30,7 +30,7 @@ import { useNetworkReady } from "../../lib/hooks/useNetworkReady";
 type Marked = LivePosition;
 
 export default function PortfolioPage() {
-  const token = useWalletStore(s => s.token);
+  const token = useWalletStore(s => s.session);
   const { account, positions: backendPositions, greeks: netGreeks, close, roll } = useBackendData();
   const balance = account?.balance ?? 0;
   const collateralLocked = account?.collateral_locked ?? 0;

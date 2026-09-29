@@ -307,7 +307,7 @@ function PublishForm({ token, onPublished, onCancel }: PublishFormProps) {
 // ── Page ──────────────────────────────────────────────────────────────────
 export default function CommunityStrategiesPage() {
   const hydrated = useHydrated();
-  const token = useWalletStore(s => s.token);
+  const token = useWalletStore(s => s.session);
 
   const [strategies, setStrategies] = useState<CommunityStrategy[]>([]);
   const [total, setTotal] = useState(0);
