@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "./Logo";
+import { AboutPanel } from "./AboutPanel";
 import { useBackendData } from "../lib/context/BackendDataContext";
 import { fmtN } from "../lib/pricing";
 import { TrackerHeaderButton } from "./TransactionTracker";
@@ -11,6 +12,7 @@ const TABS = [
   { label: "Chain", href: "/options" },
   { label: "Portfolio", href: "/portfolio" },
   { label: "History", href: "/history" },
+  { label: "Vaults", href: "/vaults" },
 ];
 
 export function AppHeader({ children }: { children?: React.ReactNode }) {
@@ -61,6 +63,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       <TrackerHeaderButton />
 
       {children}
+      <AboutPanel />
     </header>
   );
 }
