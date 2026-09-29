@@ -20,6 +20,10 @@ const config = {
   ],
   testPathIgnorePatterns: ["/node_modules/", "/.next/"],
   moduleDirectories: ["node_modules", "<rootDir>/src"],
+  coverageThreshold: {
+    // Clear-signing comparator (#119): every branch is a security check.
+    "./src/lib/soroban/intent.ts": { branches: 100, functions: 100, lines: 100, statements: 100 },
+  },
 };
 
 module.exports = config;
