@@ -5,6 +5,8 @@ import { StoreHydrator } from "../components/StoreHydrator";
 import { BackendDataProvider } from "../lib/context/BackendDataContext";
 import { SessionBanner } from "../components/SessionBanner";
 import { Toaster } from "../components/toast/Toaster";
+import { ContractErrorOverlay } from "../components/ContractErrorOverlay";
+import { QueryProvider } from "../components/QueryProvider";
 import { SpotFeedProvider } from "../lib/context/SpotFeedContext";
 
 const fraunces = Fraunces({
@@ -34,9 +36,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <StoreHydrator />
         <Toaster />
         <SessionBanner />
-        <SpotFeedProvider>
-          <BackendDataProvider>{children}</BackendDataProvider>
-        </SpotFeedProvider>
+        <ContractErrorOverlay />
+        <QueryProvider>
+          <SpotFeedProvider>
+            <BackendDataProvider>{children}</BackendDataProvider>
+          </SpotFeedProvider>
+        </QueryProvider>
       </body>
     </html>
   );
