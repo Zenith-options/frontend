@@ -14,7 +14,7 @@ function MarketSidebarImpl({sym,spot,vol}:{sym:string;spot:number;vol:number}){
   const {positions:backendPositions,greeks:portGreeks}=useBackendData();
   const priceHistory=usePriceHistory(sym,spot);
   return(
-        {/* LEFT SIDEBAR */}
+        /* LEFT SIDEBAR */
         <aside style={{width:236,flexShrink:0,borderRight:"1px solid var(--border-default)",
           overflowY:"auto",padding:"14px 12px",display:"flex",flexDirection:"column",gap:18,
           background:"var(--bg-raised)"}}>
