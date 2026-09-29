@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/api/queryKeys";
 import { EXPIRIES, bs, smileVol } from "../../../lib/pricing";
 import { getChain, getExpiryCalendar } from "../../../lib/api/market";
+import { pollInterval } from "../../../lib/api/queryPolicy";
 import type { OptionChainEntry } from "../../../lib/api/types";
 import type { ChainRow, Expiry } from "./types";
 
@@ -28,7 +29,7 @@ export function useExpiries(sym:string):Expiry[]{
   return q.data??EXPIRIES;
 }
 
-// Fetch + 4s polling + local Black-Scholes fallback when the backend is down.
+// Fetch + adaptive 4s polling + local Black-Scholes fallback when the backend is down.
 // Deliberately not re-fetching on every spot tick: spot/vol only feed the
 // fallback, never the query key.
 export function useOptionChain(sym:string,expiryDays:number,spot:number,vol:number){
@@ -36,7 +37,8 @@ export function useOptionChain(sym:string,expiryDays:number,spot:number,vol:numb
     queryKey:queryKeys.chain(sym,expiryDays),
     queryFn:()=>getChain(sym,expiryDays),
     select:mapChainEntries,
-    refetchInterval:4000,
+    // 4s normally; backs off while the API is rate-limited / circuit-open.
+    refetchInterval:pollInterval(4000),
   });
   const t=expiryDays/365;
   const chain=useMemo(():ChainRow[]=>{

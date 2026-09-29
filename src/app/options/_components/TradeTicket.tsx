@@ -3,7 +3,8 @@
 import { PayoffDiagram } from "../../../components/PayoffDiagram";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { fmtN, fmtK } from "../../../lib/pricing";
-import { useTradeTicket } from "./useTradeTicket";
+import { CONTRACT_STEP, MAX_CONTRACTS, useTradeTicket } from "./useTradeTicket";
+import { cleanPaste, formatForInput } from "../../../lib/validation";
 import type { Expiry, TradeState } from "./types";
 
 interface Props{trade:TradeState|null;sym:string;expiry:Expiry;spot:number;
@@ -11,10 +12,19 @@ interface Props{trade:TradeState|null;sym:string;expiry:Expiry;spot:number;
   onClose:()=>void;onExecuted:()=>void;}
 
 export function TradeTicket({trade,sym,expiry,spot,contracts,setContracts,onClose,onExecuted}:Props){
-  const {showTradeConfirm,setShowTradeConfirm,tradeError,setTradeError,submitting,balance,qty,
+  const {showTradeConfirm,setShowTradeConfirm,tradeError,setTradeError,submitting,balance,qty,qtyError,invalidQty,
     tradeGreeks,collateral,insufficientFunds,notSignedIn,execTrade}=
     useTradeTicket({trade,sym,expiry,spot,contracts,onDone:onExecuted});
   if(!trade||!tradeGreeks)return null;
+  const q=qty??0;
+  const blocked=insufficientFunds||notSignedIn||invalidQty;
+  // Stepper only moves from a valid value; with invalid text it does nothing
+  // (the inline error explains why) rather than guessing a number.
+  const step=(dir:1|-1)=>{
+    if(qty===null)return;
+    const next=Math.round((qty+dir)*100)/100;
+    setContracts(formatForInput(Math.min(MAX_CONTRACTS,Math.max(CONTRACT_STEP,next))));
+  };
   return(
     <>
           <aside style={{width:316,flexShrink:0,borderLeft:"1px solid var(--border-default)",
@@ -44,7 +54,7 @@ export function TradeTicket({trade,sym,expiry,spot,contracts,setContracts,onClos
                 color:"var(--text-lo)",marginBottom:8}}>P&L at Expiry</div>
               <PayoffDiagram
                 spot={spot} strike={trade.row.strike} premium={tradeGreeks.premium}
-                isCall={trade.side==="call"} short={trade.mode==="write"} contracts={qty}
+                isCall={trade.side==="call"} short={trade.mode==="write"} contracts={q}
                 width={284} height={155}
               />
             </div>
@@ -88,31 +98,39 @@ export function TradeTicket({trade,sym,expiry,spot,contracts,setContracts,onClos
               <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",
                 color:"var(--text-lo)",marginBottom:8}}>Order</div>
               <div style={{marginBottom:10}}>
-                <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>Contracts</div>
+                <label htmlFor="trade-contracts" style={{display:"block",fontSize:10,color:"var(--text-lo)",marginBottom:4}}>Contracts</label>
                 <div style={{display:"flex",alignItems:"center",
-                  background:"var(--bg-overlay)",border:"1px solid var(--border-default)",
+                  background:"var(--bg-overlay)",border:`1px solid ${qtyError?"var(--put)":"var(--border-default)"}`,
                   borderRadius:0,overflow:"hidden"}}>
-                  <button onClick={()=>setContracts(c=>String(Math.max(0.01,(parseFloat(c)||1)-1)))}
-                    style={{width:36,height:40,border:"none",background:"none",color:"var(--text-mid)",fontSize:18,cursor:"pointer"}}>−</button>
-                  <input type="number" min="0.01" step="0.01" value={contracts}
+                  <button type="button" aria-label="Decrease contracts" onClick={()=>step(-1)} disabled={invalidQty}
+                    style={{width:36,height:40,border:"none",background:"none",color:"var(--text-mid)",fontSize:18,cursor:invalidQty?"default":"pointer"}}>−</button>
+                  <input id="trade-contracts" type="text" inputMode="decimal" autoComplete="off" spellCheck={false}
+                    value={contracts}
+                    aria-invalid={!!qtyError} aria-describedby={qtyError?"trade-contracts-error":undefined}
                     onChange={e=>setContracts(e.target.value)}
-                    onBlur={e=>setContracts(String(Math.max(0.01,parseFloat(e.target.value)||1)))}
+                    onPaste={e=>{
+                      const text=e.clipboardData.getData("text");const cleaned=cleanPaste(text);
+                      if(cleaned!==text){e.preventDefault();setContracts(cleaned);}
+                    }}
                     style={{flex:1,height:40,border:"none",background:"none",textAlign:"center",
-                      fontFamily:"var(--font-mono)",fontSize:16,color:"var(--text-hi)",outline:"none"}}/>
-                  <button onClick={()=>setContracts(c=>String((parseFloat(c)||0)+1))}
-                    style={{width:36,height:40,border:"none",background:"none",color:"var(--text-mid)",fontSize:18,cursor:"pointer"}}>+</button>
+                      fontFamily:"var(--font-mono)",fontSize:16,color:qtyError?"var(--put)":"var(--text-hi)",outline:"none"}}/>
+                  <button type="button" aria-label="Increase contracts" onClick={()=>step(1)} disabled={invalidQty}
+                    style={{width:36,height:40,border:"none",background:"none",color:"var(--text-mid)",fontSize:18,cursor:invalidQty?"default":"pointer"}}>+</button>
                 </div>
+                {qtyError&&(
+                  <div id="trade-contracts-error" role="alert" style={{marginTop:4,fontSize:11,color:"var(--put)"}}>{qtyError}</div>
+                )}
               </div>
               <div style={{background:"var(--bg-elevated)",borderRadius:0,padding:"9px 12px",marginBottom:10}}>
                 {(trade.mode==="write"?[
-                  ["Qty",`${contracts} × ${sym}`],
-                  ["Premium received",`+$${fmtN(tradeGreeks.premium*qty)}`],
+                  ["Qty",qty===null?"—":`${qty} × ${sym}`],
+                  ["Premium received",`+$${fmtN(tradeGreeks.premium*q)}`],
                   ["Collateral required",`$${fmtN(collateral)}`],
                   ["Available balance",`$${fmtN(balance,2)}`],
                 ]:[
-                  ["Qty",`${contracts} × ${sym}`],
-                  ["Total premium",`$${fmtN(tradeGreeks.premium*qty)}`],
-                  ["Max loss",`$${fmtN(tradeGreeks.premium*qty)}`],
+                  ["Qty",qty===null?"—":`${qty} × ${sym}`],
+                  ["Total premium",`$${fmtN(tradeGreeks.premium*q)}`],
+                  ["Max loss",`$${fmtN(tradeGreeks.premium*q)}`],
                   ["Available balance",`$${fmtN(balance,2)}`],
                 ]).map(([k,v])=>(
                   <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}>
@@ -140,9 +158,9 @@ export function TradeTicket({trade,sym,expiry,spot,contracts,setContracts,onClos
                   </div>
                 )}
               </div>
-              <button onClick={()=>{setTradeError(null);setShowTradeConfirm(true);}} disabled={insufficientFunds||notSignedIn} style={{width:"100%",height:44,borderRadius:0,border:"none",
-                cursor:insufficientFunds||notSignedIn?"default":"pointer",fontSize:14,fontWeight:700,
-                opacity:insufficientFunds||notSignedIn?0.5:1,
+              <button onClick={()=>{setTradeError(null);setShowTradeConfirm(true);}} disabled={blocked} style={{width:"100%",height:44,borderRadius:0,border:"none",
+                cursor:blocked?"default":"pointer",fontSize:14,fontWeight:700,
+                opacity:blocked?0.5:1,
                 background:trade.side==="call"?"var(--call)":"var(--put)",color:"var(--bg)"}}>
                 {trade.mode==="write"?"Write":"Buy"} {trade.side.toUpperCase()} @ {fmtK(trade.row.strike)}
               </button>
@@ -169,14 +187,14 @@ export function TradeTicket({trade,sym,expiry,spot,contracts,setContracts,onClos
           confirmLabel={submitting?"Submitting…":`Confirm ${trade.mode==="write"?"Write":"Buy"}`}
           onConfirm={execTrade}
           onCancel={()=>setShowTradeConfirm(false)}
-          disabled={insufficientFunds||notSignedIn||submitting||!!tradeError}
-          disabledReason={tradeError??(insufficientFunds?`Insufficient balance ${trade.mode==="write"?"to post collateral":"to cover premium"}.`:undefined)}
+          disabled={blocked||submitting||!!tradeError}
+          disabledReason={tradeError??qtyError??(insufficientFunds?`Insufficient balance ${trade.mode==="write"?"to post collateral":"to cover premium"}.`:undefined)}
         >
           {[
             ["Strike",fmtK(trade.row.strike)],
             ["Expiry",expiry.label],
-            ["Contracts",String(qty)],
-            [trade.mode==="write"?"Premium received":"Total premium",`$${fmtN(tradeGreeks.premium*qty,2)}`],
+            ["Contracts",qty===null?"—":String(qty)],
+            [trade.mode==="write"?"Premium received":"Total premium",`$${fmtN(tradeGreeks.premium*q,2)}`],
             ...(trade.mode==="write"?[["Collateral required",`$${fmtN(collateral,2)}`]]:[]),
           ].map(([k,v])=>(
             <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12}}>

@@ -25,6 +25,10 @@ import { AccountReadinessChecklist } from "../../components/AccountReadinessChec
 import { ReconciliationPanel } from "../../components/ReconciliationPanel";
 import { DepositWithdrawModal } from "../../components/DepositWithdrawModal";
 import { useNetworkReady } from "../../lib/hooks/useNetworkReady";
+import { useIdempotencyKey } from "../../lib/hooks/useIdempotencyKey";
+import { formatForInput, priceSchema, useValidatedNumberInput } from "../../lib/validation";
+
+const ROLL_STRIKE_SCHEMA = priceSchema({ gt: 0, max: 1_000_000_000, maxDecimals: 4 });
 
 // Keep Marked as an alias for LivePosition so downstream code is unchanged
 type Marked = LivePosition;
@@ -92,20 +96,29 @@ export default function PortfolioPage() {
 
   const [rollTargetId, setRollTargetId] = useState<string|null>(null);
   const rollTarget = soloPositions.find(p => p.id === rollTargetId) ?? null;
-  const [rollStrikeOffsetPct, setRollStrikeOffsetPct] = useState(0);
+  // New strike is typed (or nudged ±5%) and schema-validated; while the text
+  // is invalid there is no preview and Confirm Roll is disabled.
+  const rollStrike = useValidatedNumberInput(ROLL_STRIKE_SCHEMA);
   const [rollExpiry, setRollExpiry] = useState(EXPIRIES[2]);
+  const { keyFor: rollKeyFor, complete: rollComplete } = useIdempotencyKey();
 
   useEffect(() => {
     if (!rollTarget) return;
-    setRollStrikeOffsetPct(0);
+    rollStrike.setRaw(formatForInput(rollTarget.strike, undefined, 4));
     setRollExpiry(EXPIRIES.find(e => e.days === rollTarget.expiry_days) ?? EXPIRIES[2]);
   }, [rollTargetId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const nudgeRollStrike = (pct: number) => {
+    if (rollStrike.value === null) return;
+    const next = Math.round(rollStrike.value * (1 + pct / 100) * 10000) / 10000;
+    if (next > 0) rollStrike.setRaw(formatForInput(next, undefined, 4));
+  };
+
   const rollPreview = useMemo(() => {
-    if (!rollTarget) return null;
+    if (!rollTarget || rollStrike.value === null) return null;
     const spot = spots[rollTarget.underlying] ?? MARKETS.find(m => m.sym === rollTarget.underlying)?.price ?? 0;
     const baseVol = vols[rollTarget.underlying] ?? MARKETS.find(m => m.sym === rollTarget.underlying)?.vol ?? 0.5;
-    const newStrike = Math.round(rollTarget.strike * (1 + rollStrikeOffsetPct / 100) * 10000) / 10000;
+    const newStrike = rollStrike.value;
     const t = rollExpiry.days / 365;
     const vol = smileVol(baseVol, newStrike / spot);
     const greeks = bs(spot, newStrike, vol, t, rollTarget.option_type === "call");
@@ -126,7 +139,7 @@ export default function PortfolioPage() {
     const netCashEffect = closeCashEffect + openCashEffect;
 
     return { spot, newStrike, greeks, newPremium, newCollateral, closeCashEffect, netCashEffect };
-  }, [rollTarget, rollStrikeOffsetPct, rollExpiry, spots, vols]);
+  }, [rollTarget, rollStrike.value, rollExpiry, spots, vols]);
 
   // After releasing the old leg's collateral and settling its P&L, does the
   // resulting balance actually cover what opening the new leg needs? Just a
@@ -141,7 +154,10 @@ export default function PortfolioPage() {
     setRolling(true);
     setActionError(null);
     try {
-      await roll(rollTarget.id, { newStrike: rollPreview.newStrike, newExpiryDays: rollExpiry.days });
+      const intent = { id: rollTarget.id, newStrike: rollPreview.newStrike, newExpiryDays: rollExpiry.days };
+      // BackendDataContext.roll forwards opts to rollPosition(id, params, token, opts).
+      await roll(rollTarget.id, { newStrike: intent.newStrike, newExpiryDays: intent.newExpiryDays }, { idempotencyKey: rollKeyFor(intent) });
+      rollComplete();
       setRollTargetId(null);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Failed to roll position");
@@ -385,18 +401,23 @@ export default function PortfolioPage() {
                           <td colSpan={11} style={{padding:"12px 16px"}}>
                             <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
                               <div>
-                                <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>New Strike</div>
+                                <label htmlFor={rollStrike.inputProps.id} style={{display:"block",fontSize:10,color:"var(--text-lo)",marginBottom:4}}>
+                                  New Strike <span style={{color:"var(--text-lo)"}}>(was {fmtK(p.strike)})</span>
+                                </label>
                                 <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                  <button onClick={()=>setRollStrikeOffsetPct(v=>v-5)} style={{
+                                  <button type="button" onClick={()=>nudgeRollStrike(-5)} disabled={!rollStrike.valid} style={{
                                     background:"var(--bg-overlay)",border:"1px solid var(--border-default)",
-                                    color:"var(--text-mid)",padding:"3px 8px",cursor:"pointer"}}>−5%</button>
-                                  <span className="num" style={{fontSize:12,color:"var(--text-hi)",minWidth:70,textAlign:"center"}}>
-                                    {fmtK(p.strike*(1+rollStrikeOffsetPct/100))}
-                                  </span>
-                                  <button onClick={()=>setRollStrikeOffsetPct(v=>v+5)} style={{
+                                    color:"var(--text-mid)",padding:"3px 8px",cursor:rollStrike.valid?"pointer":"default"}}>−5%</button>
+                                  <input {...rollStrike.inputProps} className="num" style={{fontSize:12,width:90,textAlign:"center",
+                                    background:"var(--bg-overlay)",color:rollStrike.error?"var(--put)":"var(--text-hi)",
+                                    border:`1px solid ${rollStrike.error?"var(--put)":"var(--border-default)"}`,padding:"3px 6px"}}/>
+                                  <button type="button" onClick={()=>nudgeRollStrike(5)} disabled={!rollStrike.valid} style={{
                                     background:"var(--bg-overlay)",border:"1px solid var(--border-default)",
-                                    color:"var(--text-mid)",padding:"3px 8px",cursor:"pointer"}}>+5%</button>
+                                    color:"var(--text-mid)",padding:"3px 8px",cursor:rollStrike.valid?"pointer":"default"}}>+5%</button>
                                 </div>
+                                {rollStrike.error && (
+                                  <div id={rollStrike.errorId} role="alert" style={{fontSize:10,color:"var(--put)",marginTop:4}}>{rollStrike.error}</div>
+                                )}
                               </div>
                               <div>
                                 <div style={{fontSize:10,color:"var(--text-lo)",marginBottom:4}}>New Expiry</div>
@@ -435,10 +456,10 @@ export default function PortfolioPage() {
                                 <button onClick={()=>setRollTargetId(null)} style={{
                                   fontSize:11,color:"var(--text-lo)",background:"none",
                                   border:"1px solid var(--border-default)",padding:"5px 12px",cursor:"pointer"}}>Cancel</button>
-                                <button onClick={executeRoll} disabled={!!rollInsufficientFunds||rolling} style={{
+                                <button onClick={executeRoll} disabled={!!rollInsufficientFunds||rolling||!rollPreview} style={{
                                   fontSize:11,color:"var(--bg)",background:"var(--brand)",border:"none",
-                                  padding:"5px 12px",cursor:rollInsufficientFunds||rolling?"default":"pointer",
-                                  opacity:rollInsufficientFunds||rolling?0.5:1}}>{rolling?"Rolling…":"Confirm Roll"}</button>
+                                  padding:"5px 12px",cursor:rollInsufficientFunds||rolling||!rollPreview?"default":"pointer",
+                                  opacity:rollInsufficientFunds||rolling||!rollPreview?0.5:1}}>{rolling?"Rolling…":"Confirm Roll"}</button>
                               </div>
                             </div>
                           </td>

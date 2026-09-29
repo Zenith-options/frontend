@@ -1,8 +1,20 @@
-// Thin fetch wrapper for the zenith-backend API. Caching/retry live in
-// TanStack Query; this standardizes the request/error shape and, when a
-// schema is passed, validates the response at runtime (ContractError).
+// Fetch wrapper for the zenith-backend API. Standardizes the request/error
+// shape, validates responses at runtime when a schema is passed
+// (ContractError), and runs every request through the resilience stack in
+// ./resilience (dedup → retry → circuit breaker → timeout). See
+// docs/api-resilience.md for the full policy.
 import type { z } from "zod";
 import { ContractError, reportContractError } from "./contractError";
+import {
+  CircuitOpenError,
+  createResilientFetch,
+  IDEMPOTENCY_HEADER,
+  parseRetryAfter,
+  RateLimitedError,
+  TimeoutError,
+  type Fetcher,
+} from "./resilience";
+import { safeText } from "../sanitize";
 
 type Schema<T> = z.ZodType<T, z.ZodTypeDef, unknown>;
 
@@ -34,13 +46,43 @@ export function getRuntimeConfig(): Promise<RuntimeConfig> {
   return runtimeConfigPromise;
 }
 
+/** Why the client (not the backend) failed a request, when it did. */
+export type ApiErrorReason = "timeout" | "circuit_open" | "rate_limited";
+
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** Server-requested backoff (Retry-After) or time until the circuit re-probes. */
+  retryAfterMs?: number;
+  reason?: ApiErrorReason;
+  constructor(status: number, message: string, extra: { retryAfterMs?: number; reason?: ApiErrorReason } = {}) {
     super(message);
     this.status = status;
+    this.retryAfterMs = extra.retryAfterMs;
+    this.reason = extra.reason;
     this.name = "ApiError";
   }
+}
+
+/** Per-call options. Callers pass TanStack Query's `signal` so unmounted queries cancel. */
+export interface RequestOptions {
+  signal?: AbortSignal;
+  /** Per-attempt timeout in ms (default 10s). */
+  timeoutMs?: number;
+  /**
+   * For POSTs that create effects (open/close/roll/claim). Must be stable
+   * across resubmits of the same intent — use IntentKeyManager /
+   * useIdempotencyKey rather than minting one per call.
+   */
+  idempotencyKey?: string;
+  /** Disable automatic retries for this GET. POSTs are never retried. */
+  noRetry?: boolean;
+}
+
+let transport: Fetcher = createResilientFetch();
+
+/** Test seam: swap the resilience stack (e.g. with fake timers / custom options). */
+export function setApiTransport(next: Fetcher) {
+  transport = next;
 }
 
 /**
@@ -69,12 +111,44 @@ function reauthenticate(): Promise<string | null> {
   return reauthInFlight;
 }
 
-async function request<T>(path: string, init: RequestInit, token?: string | null, schema?: Schema<T>, retried = false): Promise<T> {
+/** Translate resilience-layer errors into ApiError so UI code has one type to handle. */
+function toApiError(err: unknown): unknown {
+  const now = Date.now();
+  if (err instanceof TimeoutError) return new ApiError(408, err.message, { reason: "timeout" });
+  if (err instanceof CircuitOpenError) {
+    return new ApiError(503, err.message, { reason: "circuit_open", retryAfterMs: Math.max(0, err.retryAt - now) });
+  }
+  if (err instanceof RateLimitedError) {
+    return new ApiError(429, err.message, { reason: "rate_limited", retryAfterMs: Math.max(0, err.retryAt - now) });
+  }
+  return err;
+}
+
+async function request<T>(
+  path: string,
+  init: RequestInit,
+  token: string | null | undefined,
+  schema: Schema<T> | undefined,
+  opts: RequestOptions = {},
+  retried = false,
+): Promise<T> {
   const headers = new Headers(init.headers);
   if (token) headers.set("authorization", `Bearer ${token}`);
+  if (opts.idempotencyKey) headers.set(IDEMPOTENCY_HEADER, opts.idempotencyKey);
 
   const { apiUrl } = await getRuntimeConfig();
-  const res = await fetch(`${apiUrl}${path}`, { ...init, headers });
+  let res: Response;
+  try {
+    res = await transport({
+      url: `${apiUrl}${path}`,
+      init: { ...init, headers },
+      signal: opts.signal,
+      timeoutMs: opts.timeoutMs,
+      noRetry: opts.noRetry,
+    });
+  } catch (err) {
+    throw toApiError(err);
+  }
 
   // Only authed requests are recovered; auth endpoints (nonce/verify) never loop.
   if (res.status === 401 && token && !retried && !path.startsWith("/api/v1/auth/")) {
@@ -84,7 +158,7 @@ async function request<T>(path: string, init: RequestInit, token?: string | null
     // Never silently replay non-idempotent calls (open/close/roll): the
     // session is restored, but the user must re-confirm the action.
     if (method !== "GET") throw new ApiError(401, "Session restored — please confirm and retry this action");
-    return request<T>(path, init, fresh, true);
+    return request<T>(path, init, fresh, schema, opts, true);
   }
 
   if (!res.ok) {
@@ -95,7 +169,14 @@ async function request<T>(path: string, init: RequestInit, token?: string | null
     } catch {
       // Body wasn't JSON (or was empty) — keep the statusText fallback.
     }
-    throw new ApiError(res.status, message);
+    // Backend strings are untrusted: strip control/bidi chars and cap length.
+    const retryAfterMs = res.status === 429 || res.status === 503
+      ? parseRetryAfter(res.headers.get("retry-after")) ?? undefined
+      : undefined;
+    throw new ApiError(res.status, safeText(message, { maxLength: 300 }) || `request failed with ${res.status}`, {
+      retryAfterMs,
+      reason: res.status === 429 ? "rate_limited" : undefined,
+    });
   }
 
   // Some successful responses (e.g. POST /watchlist's 201, DELETE's 204)
@@ -114,11 +195,17 @@ async function request<T>(path: string, init: RequestInit, token?: string | null
   return parsed.data;
 }
 
-export function apiGet<T>(path: string, token?: string | null, schema?: Schema<T>): Promise<T> {
-  return request<T>(path, { method: "GET" }, token, schema);
+export function apiGet<T>(path: string, token?: string | null, schema?: Schema<T>, opts?: RequestOptions): Promise<T> {
+  return request<T>(path, { method: "GET" }, token, schema, opts);
 }
 
-export function apiPost<T>(path: string, body?: unknown, token?: string | null, schema?: Schema<T>): Promise<T> {
+export function apiPost<T>(
+  path: string,
+  body?: unknown,
+  token?: string | null,
+  schema?: Schema<T>,
+  opts?: RequestOptions,
+): Promise<T> {
   return request<T>(
     path,
     {
@@ -127,12 +214,13 @@ export function apiPost<T>(path: string, body?: unknown, token?: string | null, 
       body: body !== undefined ? JSON.stringify(body) : undefined,
     },
     token,
-    schema
+    schema,
+    opts,
   );
 }
 
-export function apiDelete<T>(path: string, token?: string | null): Promise<T> {
-  return request<T>(path, { method: "DELETE" }, token);
+export function apiDelete<T>(path: string, token?: string | null, opts?: RequestOptions): Promise<T> {
+  return request<T>(path, { method: "DELETE" }, token, undefined, opts);
 }
 
 export async function wsUrl(path: string): Promise<string> {

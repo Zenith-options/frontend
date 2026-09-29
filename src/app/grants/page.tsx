@@ -29,6 +29,8 @@ import {
   type ApplicationStatus,
   type Milestone,
 } from "../../lib/api/grants";
+import { EXTERNAL_LINK_REL, safeUrl } from "../../lib/sanitize";
+import { SafeMarkdown } from "../../components/SafeMarkdown";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function fmtUSD(n: number) {
@@ -105,7 +107,7 @@ function MilestoneList({ milestones }: { milestones: Milestone[] }) {
         <div key={m.id} style={{ padding: "10px 14px", border: "1px solid var(--border-subtle)", background: "var(--bg-overlay)", display: "flex", gap: 12, alignItems: "flex-start" }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-hi)", marginBottom: 2 }}>{m.title}</div>
-            <div style={{ fontSize: 11, color: "var(--text-mid)", lineHeight: 1.5 }}>{m.description}</div>
+            <SafeMarkdown style={{ fontSize: 11, color: "var(--text-mid)", lineHeight: 1.5 }} maxChars={2000}>{m.description}</SafeMarkdown>
             {m.due_date && <div style={{ fontSize: 10, color: "var(--text-lo)", marginTop: 4 }}>Due: {fmtDate(m.due_date)}</div>}
             {m.tx_hash && (
               <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--call)", marginTop: 4 }}>
@@ -427,7 +429,7 @@ export default function GrantsPage() {
                         </div>
                       </div>
 
-                      <p style={{ fontSize: 13, color: "var(--text-mid)", lineHeight: 1.6, marginBottom: 10 }}>{p.description}</p>
+                      <SafeMarkdown style={{ fontSize: 13, color: "var(--text-mid)", lineHeight: 1.6, marginBottom: 10 }}>{p.description}</SafeMarkdown>
 
                       {p.criteria && (
                         <div style={{ marginBottom: 12, padding: "10px 12px", background: "var(--bg-overlay)", border: "1px solid var(--border-subtle)" }}>
@@ -488,7 +490,7 @@ export default function GrantsPage() {
 
                       {expandedApp === app.id && (
                         <div style={{ borderTop: "1px solid var(--border-subtle)", padding: "16px 20px" }}>
-                          <div style={{ fontSize: 12, color: "var(--text-mid)", lineHeight: 1.6, marginBottom: 12 }}>{app.summary}</div>
+                          <SafeMarkdown style={{ fontSize: 12, color: "var(--text-mid)", lineHeight: 1.6, marginBottom: 12 }} maxChars={5000}>{app.summary}</SafeMarkdown>
 
                           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 12 }}>
                             <div>
@@ -505,11 +507,15 @@ export default function GrantsPage() {
                             <div style={{ marginBottom: 12 }}>
                               <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-lo)", marginBottom: 6 }}>Links</div>
                               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                {app.links.map((link, i) => (
-                                  <a key={i} href={link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "var(--brand)", textDecoration: "none", fontFamily: "var(--font-mono)" }}>
-                                    {link.length > 50 ? `${link.slice(0, 47)}…` : link}
-                                  </a>
-                                ))}
+                                {app.links.map((link, i) => {
+                                  const safe = safeUrl(link);
+                                  if (!safe) return null;
+                                  return (
+                                    <a key={i} href={safe} target="_blank" rel={EXTERNAL_LINK_REL} style={{ fontSize: 11, color: "var(--brand)", textDecoration: "none", fontFamily: "var(--font-mono)" }}>
+                                      {safe.length > 50 ? `${safe.slice(0, 47)}…` : safe}
+                                    </a>
+                                  );
+                                })}
                               </div>
                             </div>
                           )}

@@ -28,17 +28,14 @@ import {
   type DelegateLink,
   type UpsertProfileInput,
 } from "../../../lib/api/governance";
+import { EXTERNAL_LINK_REL, safeText, safeUrl } from "../../../lib/sanitize";
+import { SafeMarkdown } from "../../../components/SafeMarkdown";
+import { SafeAddress, SafeName } from "../../../components/SafeText";
 
-/** Sanitize links — only http/https, max 200 chars. */
+/** Sanitize links — central http(s)-only policy (src/lib/sanitize.ts), max 200 chars. */
 function sanitizeUrl(url: string): string | null {
-  try {
-    const u = new URL(url.trim());
-    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-    if (url.length > 200) return null;
-    return u.toString();
-  } catch {
-    return null;
-  }
+  if (url.length > 200) return null;
+  return safeUrl(url);
 }
 
 function shortAddr(addr: string) {
@@ -72,7 +69,9 @@ function DelegateDetailPanel({ detail, token, currentDelegation, onDelegate }: D
       {/* Statement */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-lo)", marginBottom: 6 }}>Statement</div>
-        <p style={{ fontSize: 13, color: "var(--text-mid)", lineHeight: 1.6 }}>{profile.statement || "No statement provided."}</p>
+        {profile.statement
+          ? <SafeMarkdown style={{ fontSize: 13, color: "var(--text-mid)", lineHeight: 1.6 }} maxChars={2000}>{profile.statement}</SafeMarkdown>
+          : <p style={{ fontSize: 13, color: "var(--text-mid)", lineHeight: 1.6 }}>No statement provided.</p>}
       </div>
 
       {/* Focus tags */}
@@ -90,8 +89,8 @@ function DelegateDetailPanel({ detail, token, currentDelegation, onDelegate }: D
           {profile.links.map((link, i) => {
             const safe = sanitizeUrl(link.url);
             return safe ? (
-              <a key={i} href={safe} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--brand)", textDecoration: "none" }}>
-                {link.label} ↗
+              <a key={i} href={safe} target="_blank" rel={EXTERNAL_LINK_REL} style={{ fontSize: 12, color: "var(--brand)", textDecoration: "none" }}>
+                {safeText(link.label, { maxLength: 60 })} ↗
               </a>
             ) : null;
           })}
@@ -181,7 +180,7 @@ function DelegateDetailPanel({ detail, token, currentDelegation, onDelegate }: D
               onClick={() => onDelegate(profile.wallet_address)}
               style={{ padding: "9px 20px", background: "var(--brand)", color: "var(--bg)", border: "none", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
             >
-              Delegate to {profile.display_name || shortAddr(profile.wallet_address)}
+              Delegate to {profile.display_name ? <SafeName name={profile.display_name} /> : shortAddr(profile.wallet_address)}
             </button>
           )}
         </div>
@@ -479,11 +478,11 @@ export default function DelegateDirectoryPage() {
                     {/* Name + address — always show both */}
                     <div style={{ padding: "10px 12px" }}>
                       <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-hi)", marginBottom: 2 }}>
-                        {d.profile.display_name || shortAddr(d.profile.wallet_address)}
+                        {d.profile.display_name ? <SafeName name={d.profile.display_name} /> : shortAddr(d.profile.wallet_address)}
                         {d.profile.verified && <span style={{ marginLeft: 6, fontSize: 9, padding: "1px 5px", background: "var(--call-dim)", color: "var(--call)" }}>✓ Verified</span>}
                       </div>
                       <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-lo)" }}>
-                        {shortAddr(d.profile.wallet_address)}
+                        <SafeAddress address={d.profile.wallet_address} truncate />
                       </div>
                     </div>
                     <div className="num" style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-hi)", alignSelf: "center" }}>{fmtNum(d.stats.voting_power)}</div>
