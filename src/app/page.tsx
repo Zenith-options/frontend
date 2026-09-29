@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PayoffDiagram } from "../components/PayoffDiagram";
 import { Logo } from "../components/Logo";
 import { bs, smileVol, fmtN, fmtK, MARKETS } from "../lib/pricing";
+import { ProvenanceBadge } from "../components/FeedStatus";
 import { useBackendData } from "../lib/context/BackendDataContext";
 import { useSpotFeedContext } from "../lib/context/SpotFeedContext";
 import { getChain } from "../lib/api/market";
@@ -168,7 +169,7 @@ export default function Home() {
             <span style={{fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--text-lo)"}}>
               {live?"Live":"Static snapshot"}
             </span>
-            <span className="num" style={{fontSize:14,fontWeight:600}}>{fmtK(spot)}</span>
+            <span className="num" style={{fontSize:14,fontWeight:600}}>{fmtK(spot)}</span> <ProvenanceBadge source="seed"/>
             <Link href="/options" style={{padding:"6px 14px",border:"1px solid var(--border-strong)",
               borderRadius:0,fontSize:12,color:"var(--text-mid)",textDecoration:"none",
               transition:"color 120ms"}}

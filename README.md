@@ -72,6 +72,13 @@ The `/options` page is tabbed:
 
 ## Architecture
 
+Options module map (`src/app/options/_components/`): `MarketHeader` (symbol
+tabs, spot, expiries), `MarketSidebar`, `ViewTabs`, `ChainTable` +
+`useOptionChain` (fetch, 4s polling, Black-Scholes fallback), `TradeTicket` +
+`useTradeTicket` (validation, collateral, funds), `PositionsTab`,
+`StrategiesTab` + `useStrategyPreview`, `SurfaceTab`, `PortfolioBar`,
+`StatusBar`. `page.tsx` only composes them.
+
 ```
 src/
 ├── app/                  # Next.js App Router pages
@@ -125,22 +132,34 @@ needs the same guard.
 
 ## Known gaps
 
+- PWA: hand-written `public/sw.js` (no Serwist/Workbox dependency), production-only registration, SVG icons only (no PNG set), no Playwright offline tests and no Lighthouse run yet. Only last-known public spot prices are snapshotted (IndexedDB, wiped on disconnect); positions/account are not cached.
 - No test suite.
 - No on-chain/Soroban integration — the backend is a paper-trading API, not
   a wallet transaction signer against the contracts.
 - Wallet sign-in (`signBlob` → verify → bearer token) hasn't been manually
   confirmed against a live Freighter extension — no extension available in
   this environment. The flow is logically complete, not hardware-tested.
+- The home page's preview chain still runs its own local random-walk spot
+  simulation rather than the shared WebSocket feed — only its watchlist is
+  backend-real.
 - The backend's `/api/v1/portfolio/payoff` endpoint has a typed client
   (`src/lib/api/payoff.ts`) but nothing calls it — the payoff diagram still
   computes locally (`src/lib/payoff.ts`). Multi-leg strategy *preview*
   pricing (before execution) is also local-only, not backend-priced.
-- `src/app/options/page.tsx` has grown large (chain + positions + strategies
-  + surface + both trade panels + confirm dialogs) — a good candidate to
-  split into sub-components before adding much more to it.
+- `src/app/options/page.tsx` is now a composition shell; feature modules live
+  in `src/app/options/_components/` (see Options module map above).
 - Accessibility is minimal — several controls (star toggle, alert form,
   contracts stepper) have no `aria-label`.
 
 ## License
 
 MIT © Zenith Protocol Contributors
+
+## API contracts
+
+`src/lib/api/schemas.ts` holds a Zod schema per backend response; types in
+`types.ts` are `z.infer`-derived. `request()` validates each response and throws
+a `ContractError` (with per-field paths) on drift: shown in a dev overlay, sent
+to `NEXT_PUBLIC_MONITOR_URL` in production. Extra backend fields are stripped;
+numeric strings are coerced. `npm run api:check` validates the fixtures in
+`contracts/fixtures/` (named after schema exports) and flags key drift.

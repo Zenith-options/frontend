@@ -1,8 +1,13 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { PwaShell } from "../components/PwaShell";
 import { StoreHydrator } from "../components/StoreHydrator";
 import { BackendDataProvider } from "../lib/context/BackendDataContext";
+import { SessionBanner } from "../components/SessionBanner";
+import { Toaster } from "../components/toast/Toaster";
+import { ContractErrorOverlay } from "../components/ContractErrorOverlay";
+import { QueryProvider } from "../components/QueryProvider";
 import { SpotFeedProvider } from "../lib/context/SpotFeedContext";
 
 const fraunces = Fraunces({
@@ -22,17 +27,26 @@ export const metadata: Metadata = {
   title: "Zenith | On-chain Options on Stellar",
   description:
     "Buy and write European put and call options on XLM, BTC, ETH, and SOL. The first decentralized options protocol on Stellar Soroban.",
+  manifest: "/manifest.webmanifest",
   keywords: ["options", "calls", "puts", "derivatives", "stellar", "soroban", "defi", "black-scholes"],
 };
+
+export const viewport: Viewport = { themeColor: "#14130F" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${fraunces.variable} ${plexSans.variable} ${jetbrainsMono.variable}`}>
       <body>
         <StoreHydrator />
-        <SpotFeedProvider>
-          <BackendDataProvider>{children}</BackendDataProvider>
-        </SpotFeedProvider>
+        <Toaster />
+        <SessionBanner />
+        <ContractErrorOverlay />
+        <QueryProvider>
+          <SpotFeedProvider>
+            <BackendDataProvider>{children}</BackendDataProvider>
+            <PwaShell />
+          </SpotFeedProvider>
+        </QueryProvider>
       </body>
     </html>
   );
