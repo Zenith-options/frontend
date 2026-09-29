@@ -84,6 +84,11 @@ panels (chain, ticket, payoff, spot, smile, positions, alerts, surface,
 strategies), apply Trader / Vol / Writer presets, and save/export/import
 layouts per wallet.
 
+Pages live under `src/app/[locale]/`. English is served unprefixed and
+Spanish and Portuguese at `/es/…` and `/pt/…`. See [docs/i18n.md](docs/i18n.md).
+Security headers and CSP: [docs/security-headers.md](docs/security-headers.md).
+Clear-signing: [docs/clear-signing.md](docs/clear-signing.md).
+
 ## Keyboard shortcuts
 
 | Shortcut | Action |

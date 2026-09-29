@@ -1,3 +1,7 @@
+// next-intl (#116): points the plugin at the per-request i18n config.
+const createNextIntlPlugin = require("next-intl/plugin");
+const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
@@ -59,10 +63,10 @@ const nextConfig = {
 };
 
 // Sentry is optional: wrap only when the SDK is installed.
-let exported = nextConfig;
+let exported = withNextIntl(nextConfig);
 try {
   const { withSentryConfig } = require("@sentry/nextjs");
-  exported = withSentryConfig(nextConfig, {
+  exported = withSentryConfig(exported, {
     org: process.env.SENTRY_ORG,
     project: process.env.SENTRY_PROJECT,
     authToken: process.env.SENTRY_AUTH_TOKEN,

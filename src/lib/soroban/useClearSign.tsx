@@ -8,10 +8,12 @@
 //   {clearSign.dialog}
 
 import { useCallback, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import type { ReviewedTransaction } from "./tx";
 
-export function useClearSign(title = "Review transaction", confirmLabel = "Continue to wallet") {
+export function useClearSign(title?: string, confirmLabel?: string) {
+  const t = useTranslations("clearSign");
   const [review, setReview] = useState<ReviewedTransaction | null>(null);
   const resolver = useRef<((approved: boolean) => void) | null>(null);
 
@@ -31,8 +33,8 @@ export function useClearSign(title = "Review transaction", confirmLabel = "Conti
 
   const dialog = review ? (
     <ConfirmDialog
-      title={title}
-      confirmLabel={confirmLabel}
+      title={title ?? t("reviewTitle")}
+      confirmLabel={confirmLabel ?? t("continueToWallet")}
       review={review}
       onConfirm={() => settle(review.verification.ok)}
       onCancel={() => settle(false)}

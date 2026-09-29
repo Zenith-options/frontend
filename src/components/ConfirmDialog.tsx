@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { useOnline } from "../lib/hooks/useOnline";
 import type { ReviewedTransaction } from "../lib/soroban/tx";
 import { TransactionSummary } from "./TransactionSummary";
@@ -22,13 +23,14 @@ interface Props {
 }
 
 export function ConfirmDialog({ title, confirmLabel, onConfirm, onCancel, disabled: disabledProp, disabledReason: reasonProp, review, children }: Props) {
+  const t = useTranslations();
   const online = useOnline();
   const mismatch = !!review && !review.verification.ok;
   const disabled = disabledProp || !online || mismatch;
   const disabledReason = !online
-    ? "You are offline — trading is disabled."
+    ? t("common.offline")
     : mismatch
-      ? "Signing is blocked because the transaction does not match your order."
+      ? t("confirm.blocked")
       : reasonProp;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -56,7 +58,7 @@ export function ConfirmDialog({ title, confirmLabel, onConfirm, onCancel, disabl
           <button onClick={onCancel} style={{
             flex: 1, padding: "9px 0", background: "none", border: "1px solid var(--border-default)",
             color: "var(--text-mid)", fontSize: 12, cursor: "pointer",
-          }}>Cancel</button>
+          }}>{t("common.cancel")}</button>
           <button onClick={onConfirm} disabled={disabled} style={{
             flex: 1, padding: "9px 0", background: "var(--brand)", border: "none",
             color: "var(--bg)", fontSize: 12, fontWeight: 700,
