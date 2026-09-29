@@ -9,7 +9,8 @@
     "lint": "next lint",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "sri:check": "node scripts/check-external-scripts.mjs"
   },
   "dependencies": {
     "@creit.tech/stellar-wallets-kit": "2.7.0",

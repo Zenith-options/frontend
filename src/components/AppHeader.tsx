@@ -13,6 +13,7 @@ const TABS = [
   { label: "Portfolio", href: "/portfolio" },
   { label: "History", href: "/history" },
   { label: "Vaults", href: "/vaults" },
+  { label: "Security", href: "/security" },
 ];
 
 export function AppHeader({ children }: { children?: React.ReactNode }) {
