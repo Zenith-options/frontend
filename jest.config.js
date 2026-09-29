@@ -18,7 +18,7 @@ const config = {
     "**/__tests__/**/*.(ts|tsx|js|jsx)",
     "**/*.(test|spec).(ts|tsx|js|jsx)",
   ],
-  testPathIgnorePatterns: ["/node_modules/", "/.next/"],
+  testPathIgnorePatterns: ["/node_modules/", "/.next/", "/e2e/", "storybook.visual.spec"],
   moduleDirectories: ["node_modules", "<rootDir>/src"],
 };
 

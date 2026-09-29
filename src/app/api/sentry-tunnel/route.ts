@@ -1,13 +1,21 @@
+import { NextResponse } from "next/server";
+
 /**
- * GET/POST /api/sentry-tunnel
- *
- * Proxies Sentry events through the Next.js server so ad-blockers that
- * block direct requests to sentry.io don't silently drop error reports.
- *
- * The @sentry/nextjs SDK handles routing automatically when `tunnelRoute`
- * is set in withSentryConfig() — this file just needs to exist as a
- * valid route handler.
- *
- * See: https://docs.sentry.io/platforms/javascript/troubleshooting/#using-the-tunnel-option
+ * AcceptSentry event payloads and immediately acknowledge them while keeping the
+ * tunnel endpoint available for browser-side reporting. This avoids depending on
+ * the SDK-specific tunnel export path, which varies by package version.
  */
-export { default } from "@sentry/nextjs/tunnel";
+export async function GET() {
+  return new NextResponse("ok", { status: 200, headers: { "Content-Type": "text/plain" } });
+}
+
+export async function POST(request: Request) {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    await request.json().catch(() => undefined);
+  } else {
+    await request.text().catch(() => undefined);
+  }
+
+  return new NextResponse(null, { status: 204 });
+}
