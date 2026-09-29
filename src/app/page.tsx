@@ -40,7 +40,7 @@ export default function Home() {
             <span style={{fontSize:14,fontWeight:600,letterSpacing:"0",fontFamily:"var(--font-serif)"}}>Zenith</span>
           </div>
           <div className="nav-links">
-            {[["Options Chain","/options"],["Portfolio","/portfolio"],["Docs","#"]].map(([l,h])=>(
+            {[["Options Chain","/options"],["Portfolio","/portfolio"],["Docs","/docs"]].map(([l,h])=>(
               <Link key={l} href={h} style={{fontSize:13,color:"var(--text-mid)",textDecoration:"none",
                 transition:"color 120ms"}}
                 onMouseOver={e=>{(e.target as HTMLElement).style.color="var(--text-hi)"}}
@@ -275,7 +275,7 @@ export default function Home() {
         <div style={{maxWidth:1080,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{fontSize:12,color:"var(--text-lo)"}}>Zenith Protocol · MIT License · Stellar Soroban</span>
           <div style={{display:"flex",gap:20}}>
-            {[["GitHub","https://github.com/Zenith-options"],["Discord","#"],["Docs","#"]].map(([l,href])=>(
+            {[["GitHub","https://github.com/Zenith-options"],["Discord","#"],["Docs","/docs"]].map(([l,href])=>(
               <a key={l} href={href} style={{fontSize:12,color:"var(--text-lo)",textDecoration:"none",
                 transition:"color 120ms"}}
                 onMouseOver={e=>{(e.target as HTMLElement).style.color="var(--text-hi)"}}

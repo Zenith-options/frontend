@@ -57,6 +57,7 @@ npm run lint     # next lint
 | `/options` | The terminal: chain, positions, strategy builder, vol surface |
 | `/portfolio` | Open positions marked-to-market, roll, close, CSV export, portfolio-wide risk panel |
 | `/history` | Full trade ledger (opens + closes) with realized P&L stats |
+| `/docs` | MDX protocol documentation hub with interactive calculators (BS pricer, collateral, payoff playground) |
 
 The `/options` page is tabbed:
 
@@ -79,8 +80,10 @@ src/
 │   ├── page.tsx          # Home
 │   ├── options/          # Chain / Positions / Strategies / Surface
 │   ├── portfolio/        # Open positions, roll, close
-│   └── history/          # Trade ledger
+│   ├── history/          # Trade ledger
+│   └── docs/             # MDX protocol documentation pages
 ├── components/           # UI components (charts, dialogs, header, etc.)
+│   └── docs/             # Docs components (calculators, search, toc, sidebar)
 └── lib/
     ├── api/              # Typed backend client: one file per domain
     │   ├── client.ts     # fetchJson + wsUrl(), NEXT_PUBLIC_API_URL, bearer auth header

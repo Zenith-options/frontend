@@ -9,21 +9,27 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@mdx-js/loader": "^3.1.1",
+    "@mdx-js/react": "^3.1.1",
+    "@next/mdx": "14.2.3",
+    "@stellar/freighter-api": "^2.0.0",
+    "katex": "^0.16.11",
     "next": "14.2.3",
     "react": "^18",
     "react-dom": "^18",
-    "@stellar/freighter-api": "^2.0.0",
     "zustand": "^4.5.2"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@types/katex": "^0.16.7",
+    "@types/mdx": "^2.0.14",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "tailwindcss": "^3.4.3",
     "autoprefixer": "^10",
-    "postcss": "^8",
     "eslint": "^8",
-    "eslint-config-next": "14.2.3"
+    "eslint-config-next": "14.2.3",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5"
   }
 }
