@@ -148,3 +148,4 @@ export function computeStats(trades: Position[]): HistoryStats {
   }
   return { trade_count: trades.length, win_count, loss_count, total_realized_pnl };
 }
+
