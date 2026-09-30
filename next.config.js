@@ -5,6 +5,8 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  reactStrictMode: true,
+  swcMinify: true,
 
   // Don't advertise the framework.
   poweredByHeader: false,
@@ -22,6 +24,10 @@ const nextConfig = {
   // is just a fallback; the client SDK always fetches the live values first.
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081",
+    NEXT_PUBLIC_ENVIRONMENT: process.env.NEXT_PUBLIC_ENVIRONMENT || 'production',
+    NEXT_PUBLIC_IS_PREVIEW: process.env.NEXT_PUBLIC_IS_PREVIEW || 'false',
+    NEXT_PUBLIC_PR_NUMBER: process.env.NEXT_PUBLIC_PR_NUMBER || '',
+    NEXT_PUBLIC_COMMIT_SHA: process.env.NEXT_PUBLIC_COMMIT_SHA || '',
   },
 
   // Tell webpack/Next to tree-shake named exports instead of pulling in
@@ -34,7 +40,7 @@ const nextConfig = {
   // (#117). Hashed static assets skip the middleware, so they get the
   // static subset here.
   async headers() {
-    return [
+    const headers = [
       {
         source: "/_next/static/:path*",
         headers: [
@@ -43,6 +49,35 @@ const nextConfig = {
         ],
       },
     ];
+
+    // Add noindex robots header for preview deployments
+    if (process.env.NEXT_PUBLIC_IS_PREVIEW === 'true') {
+      headers.push({
+        source: '/:path*',
+        headers: [
+          {
+            key: 'X-Robots-Tag',
+            value: 'noindex, nofollow',
+          },
+        ],
+      });
+    }
+
+    return headers;
+  },
+
+  // Redirects configuration
+  async redirects() {
+    return [];
+  },
+
+  // Rewrites configuration
+  async rewrites() {
+    return {
+      beforeFiles: [],
+      afterFiles: [],
+      fallback: [],
+    };
   },
 
   webpack: (config, { isServer }) => {
