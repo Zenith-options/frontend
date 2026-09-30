@@ -4,6 +4,10 @@ import "./globals.css";
 import { StoreHydrator } from "../components/StoreHydrator";
 import { BackendDataProvider } from "../lib/context/BackendDataContext";
 import { SpotFeedProvider } from "../lib/context/SpotFeedContext";
+import { FlagsProvider } from "../lib/flags/FlagsContext";
+import { FlagsDevPanel } from "../lib/flags/FlagsDevPanel";
+import { fetchRemoteConfig } from "../lib/flags/fetchRemoteConfig";
+import { resolveAllFlags } from "../lib/flags/resolve";
 
 const fraunces = Fraunces({
   subsets: ["latin"], weight: ["400","500","600","700"],
@@ -27,14 +31,28 @@ export const metadata: Metadata = {
   keywords: ["options", "calls", "puts", "derivatives", "stellar", "soroban", "defi", "black-scholes"],
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Fetch remote config on the server so the first client render has the
+  // correct values — no flicker, no layout shift.
+  const remoteConfig = await fetchRemoteConfig();
+
+  // Resolve initial flag values server-side (no wallet context available
+  // here, so only network-agnostic defaults + remote overrides apply).
+  const initialFlags = resolveAllFlags({ remoteConfig });
+
+  const isDev = process.env.NODE_ENV !== "production";
+
   return (
     <html lang="en" className={`${fraunces.variable} ${plexSans.variable} ${jetbrainsMono.variable}`}>
       <body>
         <StoreHydrator />
-        <SpotFeedProvider>
-          <BackendDataProvider>{children}</BackendDataProvider>
-        </SpotFeedProvider>
+        <FlagsProvider initialFlags={initialFlags} initialRemoteConfig={remoteConfig}>
+          <SpotFeedProvider>
+            <BackendDataProvider>{children}</BackendDataProvider>
+          </SpotFeedProvider>
+          {/* Dev panel — tree-shaken in production */}
+          {isDev && <FlagsDevPanel />}
+        </FlagsProvider>
       </body>
     </html>
   );
