@@ -1,8 +1,12 @@
 "use client";
 import { useEffect, useRef } from "react";
+import { useTranslations } from "next-intl";
+import { useOnline } from "../lib/hooks/useOnline";
+import type { ReviewedTransaction } from "../lib/soroban/tx";
+import { TransactionSummary } from "./TransactionSummary";
 
 interface ConfirmDialogProps {
-  open: boolean;
+  open?: boolean;
   title: string;
   body?: string;
   confirmLabel?: string;
@@ -10,16 +14,38 @@ interface ConfirmDialogProps {
   danger?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  disabled?: boolean;
+  disabledReason?: string;
+  /**
+   * Clear-signing (#119): the decoded, verified assembled transaction. When
+   * present it is shown before the wallet prompt, and a failed intent check
+   * disables the confirm button.
+   */
+  review?: ReviewedTransaction | null;
+  children?: React.ReactNode;
 }
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function ConfirmDialog({
-  open, title, body, confirmLabel = "Confirm", cancelLabel = "Cancel",
-  danger = false, onConfirm, onCancel,
+  open = true, title, body, confirmLabel, cancelLabel, danger = false,
+  onConfirm, onCancel, disabled: disabledProp, disabledReason: reasonProp, review, children,
 }: ConfirmDialogProps) {
+  const t = useTranslations();
+  const online = useOnline();
   const dialogRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<Element | null>(null);
+
+  const mismatch = !!review && !review.verification.ok;
+  const disabled = disabledProp || !online || mismatch;
+  const disabledReason = !online
+    ? t("common.offline")
+    : mismatch
+      ? t("confirm.blocked")
+      : reasonProp;
+
+  const resolvedConfirmLabel = confirmLabel ?? t("common.confirm");
+  const resolvedCancelLabel = cancelLabel ?? t("common.cancel");
 
   useEffect(() => {
     if (!open) return;
@@ -30,6 +56,7 @@ export function ConfirmDialog({
 
     const trap = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); onCancel(); return; }
+      if (e.key === "Enter" && !disabled) { e.preventDefault(); onConfirm(); return; }
       if (e.key !== "Tab") return;
       const all = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
       if (!all.length) return;
@@ -39,7 +66,7 @@ export function ConfirmDialog({
     };
     document.addEventListener("keydown", trap);
     return () => document.removeEventListener("keydown", trap);
-  }, [open, onCancel]);
+  }, [open, onCancel, onConfirm, disabled]);
 
   useEffect(() => {
     if (!open && returnFocusRef.current instanceof HTMLElement) {
@@ -87,6 +114,15 @@ export function ConfirmDialog({
             {body}
           </p>
         )}
+        {children}
+        {review && (
+          <div style={{ marginTop: children ? 12 : 0 }}>
+            <TransactionSummary review={review} />
+          </div>
+        )}
+        {disabled && disabledReason && (
+          <div style={{ marginTop: 10, fontSize: 11, color: "var(--put)" }}>{disabledReason}</div>
+        )}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button
             onClick={onCancel}
@@ -97,20 +133,22 @@ export function ConfirmDialog({
             onFocus={e => Object.assign(e.currentTarget.style, focusStyle)}
             onBlur={e => Object.assign(e.currentTarget.style, noOutline)}
           >
-            {cancelLabel}
+            {resolvedCancelLabel}
           </button>
           <button
             onClick={onConfirm}
+            disabled={disabled}
             style={{
               padding: "6px 18px",
               background: danger ? "var(--put)" : "var(--brand)",
               color: "var(--bg)", border: "none",
-              fontSize: 12, fontWeight: 700, cursor: "pointer", outline: "none",
+              fontSize: 12, fontWeight: 700,
+              cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, outline: "none",
             }}
             onFocus={e => Object.assign(e.currentTarget.style, focusStyle)}
             onBlur={e => Object.assign(e.currentTarget.style, noOutline)}
           >
-            {confirmLabel}
+            {resolvedConfirmLabel}
           </button>
         </div>
       </div>
