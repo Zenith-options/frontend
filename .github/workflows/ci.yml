@@ -1,32 +1,12 @@
-name: Storybook — Test & Publish
+name: CI
 
 on:
+  pull_request:
   push:
     branches: [main]
-    paths:
-      - 'src/components/**'
-      - 'src/mocks/**'
-      - 'src/lib/**'
-      - 'src/app/globals.css'
-      - '.storybook/**'
-      - 'e2e/storybook/**'
-      - 'playwright.storybook.config.ts'
-      - 'package*.json'
-      - '.github/workflows/ci.yml'
-  pull_request:
-    paths:
-      - 'src/components/**'
-      - 'src/mocks/**'
-      - 'src/lib/**'
-      - 'src/app/globals.css'
-      - '.storybook/**'
-      - 'e2e/storybook/**'
-      - 'playwright.storybook.config.ts'
-      - 'package*.json'
-      - '.github/workflows/ci.yml'
 
 concurrency:
-  group: storybook-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -36,10 +16,70 @@ permissions:
   pull-requests: write  # for posting VRT diff comments
 
 jobs:
+  checks:
+    name: Lint, typecheck, unit tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    name: Playwright (desktop, iPhone 13, Pixel 7)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium webkit
+      # RECORD=1 keeps a video of every test; they're uploaded below as the
+      # PR's recordings of the tour, the mode switch and the phone trade flow.
+      - run: npx playwright test
+        env:
+          CI: "true"
+          RECORD: "1"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 14
+
+  lighthouse:
+    name: Lighthouse (mobile perf ≥ 0.85, CLS < 0.05)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx --yes @lhci/cli@0.14.0 autorun
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-report
+          path: lhci-report
+          retention-days: 14
+
   # ────────────────────────────────────────────────────────────────────────────
-  # 1. Build Storybook
+  # Storybook: Build, test, visual regression, and publish
   # ────────────────────────────────────────────────────────────────────────────
-  build:
+  storybook-build:
     name: Build Storybook
     runs-on: ubuntu-latest
     steps:
@@ -69,13 +109,10 @@ jobs:
           path: storybook-static/
           retention-days: 7
 
-  # ────────────────────────────────────────────────────────────────────────────
-  # 2. Storybook test runner (interaction tests + a11y)
-  # ────────────────────────────────────────────────────────────────────────────
-  test-runner:
+  storybook-test-runner:
     name: Test Runner (interactions + a11y)
     runs-on: ubuntu-latest
-    needs: build
+    needs: storybook-build
     steps:
       - uses: actions/checkout@v4
 
@@ -114,13 +151,10 @@ jobs:
             test-results/
           retention-days: 7
 
-  # ────────────────────────────────────────────────────────────────────────────
-  # 3. Visual regression tests (Playwright screenshot comparison)
-  # ────────────────────────────────────────────────────────────────────────────
-  visual-regression:
+  storybook-visual-regression:
     name: Visual Regression Tests
     runs-on: ubuntu-latest
-    needs: build
+    needs: storybook-build
     steps:
       - uses: actions/checkout@v4
 
@@ -178,13 +212,10 @@ jobs:
               body: `## 📸 Visual Regression Differences Detected\n\nScreenshot diffs were found. Download the **[VRT report artifact](${artifactUrl})** to review pixel-level differences.\n\nTo update baselines:\n\`\`\`bash\nnpx playwright test --config playwright.storybook.config.ts --update-snapshots\ngit add e2e/storybook/__snapshots__\ngit commit -m "chore: update VRT snapshots"\n\`\`\``,
             });
 
-  # ────────────────────────────────────────────────────────────────────────────
-  # 4. Publish Storybook to GitHub Pages (main branch only)
-  # ────────────────────────────────────────────────────────────────────────────
-  publish:
+  storybook-publish:
     name: Publish Storybook to GitHub Pages
     runs-on: ubuntu-latest
-    needs: [test-runner, visual-regression]
+    needs: [storybook-test-runner, storybook-visual-regression]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment:
       name: github-pages
@@ -207,3 +238,4 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deploy
         uses: actions/deploy-pages@v4
+
