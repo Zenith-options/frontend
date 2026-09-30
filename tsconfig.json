@@ -12,10 +12,14 @@
     "incremental": true,
     "module": "esnext",
     "esModuleInterop": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
     "plugins": [
       {
         "name": "next"
@@ -26,9 +30,11 @@
     "next-env.d.ts",
     ".next/types/**/*.ts",
     "**/*.ts",
-    "**/*.tsx"
+    "**/*.tsx",
+    "eslint.config.mjs"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "**/*.test.ts"
   ]
 }
