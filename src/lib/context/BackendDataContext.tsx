@@ -1,109 +1,137 @@
 "use client";
 
-import { createContext, useContext } from "react";
-import { useBackendAccount } from "../hooks/useBackendAccount";
-import { useBackendPositions } from "../hooks/useBackendPositions";
-import { useBackendWatchlist } from "../hooks/useBackendWatchlist";
-import { useBackendAlerts } from "../hooks/useBackendAlerts";
+import React, { createContext, useContext, useCallback, useState, useEffect } from "react";
 import { useWalletStore } from "../store/wallet";
 import { useHydrated } from "../useHydrated";
-import type { Account } from "../api/types";
 
-interface BackendData {
-  account: Account | null;
-  accountLoading: boolean;
-  refreshAccount: () => void;
-  positions: ReturnType<typeof useBackendPositions>["positions"];
-  greeks: ReturnType<typeof useBackendPositions>["greeks"];
-  positionsLoading: boolean;
-  refreshPositions: () => void;
-  open: ReturnType<typeof useBackendPositions>["open"];
-  openStrategy: ReturnType<typeof useBackendPositions>["openStrategy"];
-  close: ReturnType<typeof useBackendPositions>["close"];
-  roll: ReturnType<typeof useBackendPositions>["roll"];
-  watchlist: ReturnType<typeof useBackendWatchlist>["items"];
-  watchlistLoading: boolean;
-  addToWatchlist: ReturnType<typeof useBackendWatchlist>["add"];
-  removeFromWatchlist: ReturnType<typeof useBackendWatchlist>["remove"];
-  alerts: ReturnType<typeof useBackendAlerts>["alerts"];
-  alertsLoading: boolean;
-  addAlert: ReturnType<typeof useBackendAlerts>["add"];
-  removeAlert: ReturnType<typeof useBackendAlerts>["remove"];
+// ---------------------------------------------------------------------------
+// Types (mirroring src/lib/api/types.ts shapes)
+// ---------------------------------------------------------------------------
+
+export interface Account {
+  wallet_address: string;
+  balance: number;
+  collateral_locked: number;
+  created_at: string;
 }
 
-const BackendDataContext = createContext<BackendData | null>(null);
+export interface WatchlistItem {
+  wallet_address: string;
+  underlying: string;
+  added_at: string;
+}
 
-/**
- * Single shared instance of the account/positions/watchlist/alerts hooks,
- * mounted once at the root — every consumer (AppHeader's balance chip,
- * StarButton, AlertsPanel, the options and portfolio pages) reads the
- * same state instead of each running its own independent fetch. That
- * matters specifically because each hook's mutation methods only refresh
- * *their own* instance's data; without a shared instance, e.g.
- * AppHeader's balance would go stale after a trade made through a
- * different component's copy of the hook until the next full remount.
- */
+// ---------------------------------------------------------------------------
+// Context value shape
+// ---------------------------------------------------------------------------
+
+export interface BackendDataContextValue {
+  /** Null until the first successful fetch, or when not signed in. */
+  account: Account | null;
+  /** Watchlist entries for the current wallet. */
+  watchlist: WatchlistItem[];
+  /** Add a symbol to the watchlist (requires bearer token). */
+  addToWatchlist: (sym: string) => Promise<void>;
+  /** Remove a symbol from the watchlist (requires bearer token). */
+  removeFromWatchlist: (sym: string) => Promise<void>;
+  /** Manually trigger an account refresh (e.g. after deposit/withdraw). */
+  refreshAccount: () => void;
+}
+
+const BackendDataContext = createContext<BackendDataContextValue | null>(null);
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
+
+export function useBackendData(): BackendDataContextValue {
+  const ctx = useContext(BackendDataContext);
+  if (!ctx) {
+    throw new Error("useBackendData must be used within BackendDataProvider");
+  }
+  return ctx;
+}
+
+import { env } from "../../env";
+
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
+
+const API_BASE = env.NEXT_PUBLIC_API_URL;
+
+async function fetchJSON<T>(url: string, token: string | null): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
 export function BackendDataProvider({ children }: { children: React.ReactNode }) {
   const hydrated = useHydrated();
-  const token = useWalletStore(s => s.token);
-  // Same reasoning as every other persisted-store read on this page tree:
-  // pass null until this component's own mount effect has fired, so the
-  // first client render matches SSR regardless of when the wallet store
-  // itself rehydrates.
-  const effectiveToken = hydrated ? token : null;
+  const token = useWalletStore((s) => s.token);
 
-  const { account, loading: accountLoading, refresh: refreshAccount } = useBackendAccount(effectiveToken);
-  const {
-    positions, greeks, loading: positionsLoading, refresh: refreshPositions,
-    open, openStrategy, close, roll,
-  } = useBackendPositions(effectiveToken);
-  const {
-    items: watchlist, loading: watchlistLoading,
-    add: addToWatchlist, remove: removeFromWatchlist,
-  } = useBackendWatchlist(effectiveToken);
-  const { alerts, loading: alertsLoading, add: addAlert, remove: removeAlert } = useBackendAlerts(effectiveToken);
+  const [account, setAccount] = useState<Account | null>(null);
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  const [accountTick, setAccountTick] = useState(0);
 
-  // Every position mutation changes the account balance/collateral too —
-  // refresh it here rather than trusting every call site to remember to.
-  const openAndRefreshAccount: typeof open = async (params) => {
-    const result = await open(params);
-    refreshAccount();
-    return result;
-  };
-  const openStrategyAndRefreshAccount: typeof openStrategy = async (legs) => {
-    const result = await openStrategy(legs);
-    refreshAccount();
-    return result;
-  };
-  const closeAndRefreshAccount: typeof close = async (id) => {
-    const result = await close(id);
-    refreshAccount();
-    return result;
-  };
-  const rollAndRefreshAccount: typeof roll = async (id, params) => {
-    const result = await roll(id, params);
-    refreshAccount();
-    return result;
+  const refreshAccount = useCallback(() => setAccountTick((t) => t + 1), []);
+
+  // Fetch account
+  useEffect(() => {
+    if (!hydrated || !token) { setAccount(null); return; }
+    let cancelled = false;
+    fetchJSON<Account>(`${API_BASE}/api/v1/account`, token)
+      .then((a) => { if (!cancelled) setAccount(a); })
+      .catch(() => { if (!cancelled) setAccount(null); });
+    return () => { cancelled = true; };
+  }, [hydrated, token, accountTick]);
+
+  // Fetch watchlist
+  useEffect(() => {
+    if (!hydrated || !token) { setWatchlist([]); return; }
+    let cancelled = false;
+    fetchJSON<WatchlistItem[]>(`${API_BASE}/api/v1/watchlist`, token)
+      .then((w) => { if (!cancelled) setWatchlist(w); })
+      .catch(() => { if (!cancelled) setWatchlist([]); });
+    return () => { cancelled = true; };
+  }, [hydrated, token]);
+
+  const addToWatchlist = useCallback(async (sym: string) => {
+    if (!token) return;
+    await fetchJSON(`${API_BASE}/api/v1/watchlist/${sym}`, token);
+    setWatchlist((prev) =>
+      prev.some((w) => w.underlying === sym)
+        ? prev
+        : [...prev, { wallet_address: account?.wallet_address ?? "", underlying: sym, added_at: new Date().toISOString() }]
+    );
+  }, [token, account]);
+
+  const removeFromWatchlist = useCallback(async (sym: string) => {
+    if (!token) return;
+    await fetch(`${API_BASE}/api/v1/watchlist/${sym}`, {
+      method: "DELETE",
+      headers: token ? { "Authorization": `Bearer ${token}` } : {},
+    });
+    setWatchlist((prev) => prev.filter((w) => w.underlying !== sym));
+  }, [token]);
+
+  const value: BackendDataContextValue = {
+    account,
+    watchlist,
+    addToWatchlist,
+    removeFromWatchlist,
+    refreshAccount,
   };
 
   return (
-    <BackendDataContext.Provider
-      value={{
-        account, accountLoading, refreshAccount,
-        positions, greeks, positionsLoading, refreshPositions,
-        open: openAndRefreshAccount, openStrategy: openStrategyAndRefreshAccount,
-        close: closeAndRefreshAccount, roll: rollAndRefreshAccount,
-        watchlist, watchlistLoading, addToWatchlist, removeFromWatchlist,
-        alerts, alertsLoading, addAlert, removeAlert,
-      }}
-    >
+    <BackendDataContext.Provider value={value}>
       {children}
     </BackendDataContext.Provider>
   );
 }
 
-export function useBackendData(): BackendData {
-  const ctx = useContext(BackendDataContext);
-  if (!ctx) throw new Error("useBackendData must be used within BackendDataProvider");
-  return ctx;
-}
+// Export the context object itself so mock providers (Storybook, tests) can
+// inject directly into it using <BackendDataContext.Provider value={...}>.
+export { BackendDataContext };
