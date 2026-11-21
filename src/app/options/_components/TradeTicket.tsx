@@ -159,16 +159,15 @@ export function TradeTicket({
               borderRadius: 0, overflow: "hidden",
             }}>
               <button
-                onClick={() => setContracts((c) => String(Math.max(0.01, (parseFloat(c) || 1) - 1)))}
+                onClick={() => setContracts((c) => String(Math.max(1, (parseFloat(c) || 1) - 1)))}
                 style={{
                   width: 36, height: 40, border: "none", background: "none",
                   color: "var(--text-mid)", fontSize: 18, cursor: "pointer",
                 }}
               >−</button>
               <input
-                type="number" min="0.01" step="0.01" value={contracts}
+                type="number" min="1" step="1" value={contracts}
                 onChange={(e) => setContracts(e.target.value)}
-                onBlur={(e) => setContracts(String(Math.max(0.01, parseFloat(e.target.value) || 1)))}
                 style={{
                   flex: 1, height: 40, border: "none", background: "none", textAlign: "center",
                   fontFamily: "var(--font-mono)", fontSize: 16, color: "var(--text-hi)", outline: "none",
