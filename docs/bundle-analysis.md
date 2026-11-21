@@ -8,10 +8,12 @@ JS bundle for each route.
 
 | Route | First-load JS (estimated) | Notes |
 |---|---|---|
-| `/` (home) | ~180 kB | Includes PayoffDiagram, pricing.ts |
-| `/options` | ~320 kB | All chart components, VolSurfaceHeatmap, ConfirmDialog, MultiLegPayoffDiagram |
-| `/portfolio` | ~240 kB | PortfolioRiskPanel (canvas), risk.ts |
-| `/history` | ~130 kB | Lightest page — table only |
+| `/` (home) | ~180 kB | No chart import found in source (`src/app/page.tsx` is empty) |
+| `/options` | ~320 kB | `src/app/options/` imports PayoffDiagram, ConfirmDialog; `src/app/[locale]/options/` imports MultiLegPayoffDiagram, VolSmile, SpotPriceChart, VolSurfaceHeatmap, ConfirmDialog |
+| `/portfolio` | ~240 kB | No chart import found in source (`PortfolioRiskPanel` is referenced only by `src/components/lazy.tsx`, which nothing imports) |
+| `/history` | ~130 kB | No chart import found in source — table only |
+
+Routes that import the charting library, as traced from source: `/options` and `/[locale]/options`. `/`, `/portfolio` and `/history` show no import path, but their `page.tsx` files are empty in HEAD, so that absence is unverified until the page sources are restored.
 
 Shared chunks: ~95 kB (React, Next.js runtime, zustand, freighter-api)
 
