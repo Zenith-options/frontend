@@ -22,14 +22,14 @@ export function TradeTicket({
 }: Props) {
   const {
     showTradeConfirm, setShowTradeConfirm, tradeError, setTradeError,
-    submitting, balance, qty, tradeGreeks, collateral,
+    submitting, balance, qty, qtyEmpty, tradeGreeks, collateral,
     insufficientFunds, notSignedIn, integrityBlocked, execTrade,
-  } = useTradeTicket({ trade, sym, expiry, spot, contracts, onDone: onExecuted });
+  } = useTradeTicket({ trade, sym, expiry, spot, contracts, setContracts, onDone: onExecuted });
 
   if (!trade || !tradeGreeks) return null;
 
   // Any condition that disables the action button.
-  const actionDisabled = insufficientFunds || notSignedIn || integrityBlocked;
+  const actionDisabled = insufficientFunds || notSignedIn || integrityBlocked || qtyEmpty;
 
   return (
     <>

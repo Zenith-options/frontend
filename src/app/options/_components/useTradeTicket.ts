@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../../../lib/api/client";
 import { useBackendData } from "../../../lib/context/BackendDataContext";
 import { useWalletStore } from "../../../lib/store/wallet";
@@ -12,11 +12,12 @@ interface Args {
   expiry: Expiry;
   spot: number;
   contracts: string;
+  setContracts: (c: string) => void;
   onDone: () => void;
 }
 
 // Validation, collateral and funds checks + submit for the single-leg ticket.
-export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: Args) {
+export function useTradeTicket({ trade, sym, expiry, spot, contracts, setContracts, onDone }: Args) {
   const [showTradeConfirm, setShowTradeConfirm] = useState(false);
   const [tradeError, setTradeError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -24,6 +25,17 @@ export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: 
   const { account, open: openBackendPosition } = useBackendData();
   const balance = account?.balance ?? 0;
   const qty = Math.max(0.01, parseFloat(contracts) || 1);
+  const qtyEmpty = contracts.trim() === "";
+
+  // Same key the chain query uses (queryKeys.chain(sym, expiryDays)).
+  // A quantity sized for one market must not carry over to another.
+  const marketKey = `${sym}:${expiry.days}`;
+  const prevMarketKey = useRef(marketKey);
+  useEffect(() => {
+    if (prevMarketKey.current === marketKey) return;
+    prevMarketKey.current = marketKey;
+    setContracts("");
+  }, [marketKey, setContracts]);
   const tradeGreeks = trade ? (trade.side === "call" ? trade.row.call : trade.row.put) : null;
   const collateral =
     trade && trade.mode === "write"
@@ -45,7 +57,7 @@ export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: 
   const integrityBlocked = isTradingBlocked(sym);
 
   const execTrade = async () => {
-    if (!trade || !tradeGreeks || insufficientFunds || submitting || integrityBlocked) return;
+    if (!trade || !tradeGreeks || qtyEmpty || insufficientFunds || submitting || integrityBlocked) return;
     setSubmitting(true);
     setTradeError(null);
     try {
@@ -74,6 +86,7 @@ export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: 
     submitting,
     balance,
     qty,
+    qtyEmpty,
     tradeGreeks,
     collateral,
     insufficientFunds,
