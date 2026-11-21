@@ -143,7 +143,8 @@ export function useOptionChain(
 
   const q = useQuery({
     queryKey: queryKeys.chain(sym, expiryDays),
-    queryFn: () => getChain(sym, expiryDays),
+    // Passing the query signal aborts the in-flight request when sym/expiry changes.
+    queryFn: ({ signal }) => getChain(sym, expiryDays, signal),
     select: mapChainEntries,
     refetchInterval: 4000,
   });
