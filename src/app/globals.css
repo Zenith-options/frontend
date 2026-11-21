@@ -190,3 +190,9 @@ body {
   color: var(--color-text-primary);
   font-family: var(--font-sans);
 }
+
+/* Keyboard focus ring. Inline styles cannot express :focus-visible, so buttons opt in via this class. */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}

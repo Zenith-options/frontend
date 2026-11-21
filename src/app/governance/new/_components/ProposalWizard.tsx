@@ -170,6 +170,7 @@ export function ProposalWizard({
               <li key={s.key} style={{ flex: 1 }}>
                 <button
                   type="button"
+                  className="focus-ring"
                   onClick={() => {
                     if (i <= step) setStep(i as StepIndex);
                   }}

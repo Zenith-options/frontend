@@ -94,6 +94,7 @@ export function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
+      className="focus-ring"
       style={{
         padding: "10px 20px",
         background: disabled ? "var(--bg-overlay)" : "var(--brand)",
@@ -126,6 +127,7 @@ export function SecondaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
+      className="focus-ring"
       style={{
         padding: "8px 16px",
         background: "transparent",
