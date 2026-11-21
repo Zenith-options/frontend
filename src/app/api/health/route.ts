@@ -1,13 +1,40 @@
 import { NextResponse } from "next/server";
+import { env } from "../../../env";
+
+export const dynamic = "force-dynamic";
+
+/** Upper bound so a hung backend cannot hang the health route itself. */
+const BACKEND_TIMEOUT_MS = 3_000;
+
+type DependencyStatus = "ok" | "down";
+
+async function checkBackend(): Promise<DependencyStatus> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${env.NEXT_PUBLIC_API_URL}/health`, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    return res.ok ? "ok" : "down";
+  } catch {
+    return "down";
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * GET /api/health
  *
- * Lightweight health-check endpoint used by Docker HEALTHCHECK and load
- * balancers.  Returns 200 as long as the Next.js server is up; no
- * backend connectivity check is performed here (the container is healthy
- * if the frontend process itself is alive).
+ * Used by Docker HEALTHCHECK and load balancers. Returns 200 when the backend
+ * responds, otherwise 503 naming the failing dependency.
  */
-export function GET() {
-  return NextResponse.json({ status: "ok" }, { status: 200 });
+export async function GET() {
+  const backend = await checkBackend();
+  const healthy = backend === "ok";
+  return NextResponse.json(
+    { status: healthy ? "ok" : "down", dependencies: { backend } },
+    { status: healthy ? 200 : 503 },
+  );
 }
