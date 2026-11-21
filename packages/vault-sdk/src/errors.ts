@@ -35,6 +35,11 @@ export class VaultSdkError extends Error {
   }
 }
 
+/** Transport error for a request that exceeded the client's `timeoutMs`. */
+export function timeoutError(timeoutMs: number): VaultSdkError {
+  return new VaultSdkError("transport", `Vault API request timed out after ${timeoutMs} ms`);
+}
+
 /** Maps a non-2xx HTTP status to the SDK error taxonomy. */
 export function httpError(status: number, code?: string): VaultSdkError {
   const options = { status, code };

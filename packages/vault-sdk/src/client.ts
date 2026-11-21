@@ -7,15 +7,20 @@
  * is sent with `credentials: "same-origin"`.
  */
 
-import { httpError, VaultSdkError } from "./errors";
+import { httpError, timeoutError, VaultSdkError } from "./errors";
 import type { DepositResult, VaultDetail, VaultSummary, WithdrawResult } from "./types";
 import { parseDepositResult, parseVaultDetail, parseVaultSummaries, parseWithdrawResult } from "./validate";
+
+/** Per-request time budget. Covers the response body read as well as the headers. */
+export const DEFAULT_VAULT_TIMEOUT_MS = 10_000;
 
 export interface VaultTransportRequest {
   method: "GET" | "POST";
   url: string;
   headers: Record<string, string>;
   body?: unknown;
+  /** Aborted when the request times out; custom transports should forward it to their I/O. */
+  signal?: AbortSignal;
 }
 
 export interface VaultTransportResponse {
@@ -33,6 +38,8 @@ export interface VaultClientOptions {
   getToken?: () => string | null | undefined | Promise<string | null | undefined>;
   /** Replaces the default fetch transport, e.g. with a fake in unit tests or the e2e mock backend. */
   transport?: VaultTransport;
+  /** Per-request timeout in milliseconds. Defaults to `DEFAULT_VAULT_TIMEOUT_MS`. */
+  timeoutMs?: number;
 }
 
 export interface VaultClient {
@@ -51,12 +58,13 @@ function parseJson(text: string): unknown {
   }
 }
 
-const defaultTransport: VaultTransport = async ({ method, url, headers, body }) => {
+const defaultTransport: VaultTransport = async ({ method, url, headers, body, signal }) => {
   const res = await fetch(url, {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: "same-origin",
+    signal,
   });
   const text = await res.text();
   return { status: res.status, body: text ? parseJson(text) : undefined };
@@ -77,16 +85,34 @@ function assertPositive(value: number, name: string): void {
 export function createVaultClient(options: VaultClientOptions): VaultClient {
   const baseUrl = options.baseUrl.replace(/\/+$/, "");
   const transport = options.transport ?? defaultTransport;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_VAULT_TIMEOUT_MS;
+  assertPositive(timeoutMs, "timeoutMs");
 
   async function send(method: "GET" | "POST", path: string, body?: unknown) {
     const headers: Record<string, string> = { accept: "application/json" };
     if (body !== undefined) headers["content-type"] = "application/json";
     const token = await options.getToken?.();
     if (token) headers.authorization = `Bearer ${token}`;
+    // The race covers transports that ignore `signal`; the abort cancels transports that honour it.
+    const controller = new AbortController();
+    const timedOut = timeoutError(timeoutMs);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(timedOut);
+      }, timeoutMs);
+    });
     try {
-      return await transport({ method, url: `${baseUrl}${path}`, headers, body });
+      return await Promise.race([
+        transport({ method, url: `${baseUrl}${path}`, headers, body, signal: controller.signal }),
+        deadline,
+      ]);
     } catch (cause) {
+      if (cause === timedOut) throw cause;
       throw new VaultSdkError("transport", "Vault API request could not be completed", { cause });
+    } finally {
+      clearTimeout(timer);
     }
   }
 
