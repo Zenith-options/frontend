@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { use } from "react";
 import { useTranslations } from "next-intl";
 import { AppHeader } from "../../../../components/AppHeader";
@@ -76,8 +77,13 @@ function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+// Matches VaultId in docs/api/vaults-v1.openapi.yaml.
+const VAULT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
 export default function VaultDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  // Reject before any fetch so a malformed id gets a clean not-found, not an upstream error.
+  if (!VAULT_ID_PATTERN.test(id)) notFound();
   const address = useWalletStore(s => s.address);
   const token = useWalletStore(s => s.session);
   const vaultsEnabled = useFlag("vaults");
