@@ -159,6 +159,11 @@ export async function signCard(card: ShareCard, secret: string): Promise<string>
   return id;
 }
 
+/** Shape only (length cap, base64url payload + "." + base64url signature). Does not check the signature. */
+export function isWellFormedShareId(id: string): boolean {
+  return id.length <= MAX_SHARE_ID_LENGTH && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(id);
+}
+
 /** The card if `id` carries a valid signature and a well-formed payload, else null. */
 export async function verifyShareId(id: string, secret: string): Promise<ShareCard | null> {
   if (typeof id !== "string" || id.length === 0 || id.length > MAX_SHARE_ID_LENGTH) return null;

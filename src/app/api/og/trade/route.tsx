@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 import { ShareCardImage, CARD_SIZE } from "../../../../lib/share/cardImage";
-import { getSigningSecret, verifyShareId, ShareConfigError } from "../../../../lib/share/payload";
+import { getSigningSecret, isWellFormedShareId, verifyShareId, ShareConfigError } from "../../../../lib/share/payload";
 
 export const runtime = "edge";
 
@@ -16,6 +16,7 @@ const NO_STORE = { "cache-control": "no-store" };
 
 export async function GET(req: Request) {
   const id = new URL(req.url).searchParams.get("id") ?? "";
+  if (!isWellFormedShareId(id)) return new Response("Invalid trade id", { status: 400, headers: NO_STORE });
   let secret: string;
   try {
     secret = getSigningSecret();
