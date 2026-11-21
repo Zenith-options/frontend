@@ -4,6 +4,7 @@ import { useBackendData } from "../../../lib/context/BackendDataContext";
 import { useWalletStore } from "../../../lib/store/wallet";
 import { collateralRequired } from "../../../lib/collateral";
 import { useIntegrityStore } from "../../../lib/integrity/integrityStore";
+import { integerSchema } from "../../../lib/validation";
 import type { Expiry, TradeState } from "./types";
 
 interface Args {
@@ -24,6 +25,8 @@ export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: 
   const { account, open: openBackendPosition } = useBackendData();
   const balance = account?.balance ?? 0;
   const qty = Math.max(0.01, parseFloat(contracts) || 1);
+  // Whole contracts only, rejected before submit (docs/input-validation.md).
+  const qtyValid = integerSchema({ min: 1 }).safeParse(contracts).success;
   const tradeGreeks = trade ? (trade.side === "call" ? trade.row.call : trade.row.put) : null;
   const collateral =
     trade && trade.mode === "write"
@@ -46,6 +49,10 @@ export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: 
 
   const execTrade = async () => {
     if (!trade || !tradeGreeks || insufficientFunds || submitting || integrityBlocked) return;
+    if (!qtyValid) {
+      setTradeError("Quantity must be a positive whole number");
+      return;
+    }
     setSubmitting(true);
     setTradeError(null);
     try {
