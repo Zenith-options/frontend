@@ -33,7 +33,7 @@ export function TradeTicket({
 
   return (
     <>
-      <aside style={{
+      <aside aria-busy={submitting} style={{
         width: 316, flexShrink: 0, borderLeft: "1px solid var(--border-default)",
         overflowY: "auto", background: "var(--bg-raised)", display: "flex", flexDirection: "column",
       }}>
@@ -230,14 +230,14 @@ export function TradeTicket({
           </div>
           <button
             onClick={() => { setTradeError(null); setShowTradeConfirm(true); }}
-            disabled={actionDisabled}
-            aria-disabled={actionDisabled}
+            disabled={actionDisabled || submitting}
+            aria-disabled={actionDisabled || submitting}
             title={integrityBlocked ? "Trading disabled — data integrity check failed" : undefined}
             style={{
               width: "100%", height: 44, borderRadius: 0, border: "none",
-              cursor: actionDisabled ? "default" : "pointer",
+              cursor: actionDisabled || submitting ? "default" : "pointer",
               fontSize: 14, fontWeight: 700,
-              opacity: actionDisabled ? 0.5 : 1,
+              opacity: actionDisabled || submitting ? 0.5 : 1,
               background: integrityBlocked
                 ? "var(--put)"
                 : trade.side === "call" ? "var(--call)" : "var(--put)",
@@ -277,6 +277,7 @@ export function TradeTicket({
       </aside>
 
       <ConfirmDialog
+        open={showTradeConfirm}
         title={`${trade.mode === "write" ? "Write" : "Buy"} ${sym} ${trade.side.toUpperCase()}`}
         confirmLabel={submitting ? "Submitting…" : `Confirm ${trade.mode === "write" ? "Write" : "Buy"}`}
         onConfirm={execTrade}

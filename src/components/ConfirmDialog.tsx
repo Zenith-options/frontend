@@ -10,6 +10,7 @@ interface Props {
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
+  disabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   children?: React.ReactNode;
@@ -33,6 +34,7 @@ export function ConfirmDialog({
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   destructive = false,
+  disabled = false,
   onConfirm,
   onCancel,
   children,
@@ -105,6 +107,8 @@ export function ConfirmDialog({
           <button
             type="button"
             data-autofocus
+            disabled={disabled}
+            aria-disabled={disabled}
             onClick={onConfirm}
             style={{
               flex: 1,
@@ -114,7 +118,8 @@ export function ConfirmDialog({
               color: destructive ? "#fff" : "var(--bg)",
               fontSize: 13,
               fontWeight: 700,
-              cursor: "pointer",
+              cursor: disabled ? "default" : "pointer",
+              opacity: disabled ? 0.5 : 1,
             }}
           >
             {confirmLabel}
