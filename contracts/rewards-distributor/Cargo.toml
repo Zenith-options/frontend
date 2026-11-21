@@ -1,0 +1,12 @@
+[package]
+name = "zenith-rewards-distributor"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Cumulative Merkle-claim LP incentive distributor for Zenith options vaults (SEP-41 reward token)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk.workspace = true
