@@ -33,6 +33,7 @@ import {
 } from "../../../lib/api/vaults";
 import { useFlag } from "../../../lib/flags";
 import { VaultHealthBadge } from "../../../components/VaultHealthBadge";
+import { SkeletonRows } from "../../../components/states/Skeleton";
 
 const ABSENT = "—";
 
@@ -219,10 +220,8 @@ function VaultsIndex() {
 
           {/* Loading */}
           {loading && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {[1, 2, 3].map(i => (
-                <div key={i} className="skeleton" style={{ height: 44, width: "100%" }} />
-              ))}
+            <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-raised)" }}>
+              <SkeletonRows rows={5} rowHeight={56} columns={6} label="Loading vaults" testId="vaults-skeleton" />
             </div>
           )}
 
