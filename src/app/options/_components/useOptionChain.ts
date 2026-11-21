@@ -121,6 +121,12 @@ export function useExpiries(sym: string): Expiry[] {
   return q.data ?? EXPIRIES;
 }
 
+// Chain snapshots are reused for this long across remounts (e.g. tab switches).
+// Keyed by symbol + expiry, so a market change never serves another market's chain.
+// shortcut: in-memory per tab and never evicted (bounded by symbols x expiries), move to react-query staleTime if the cache must be shared.
+const CHAIN_CACHE_TTL_MS = 30_000;
+const chainCache = new Map<string, { entries: OptionChainEntry[]; fetchedAt: number }>();
+
 /**
  * Fetch + 4s polling + local Black-Scholes fallback when the backend is down.
  *
@@ -143,7 +149,14 @@ export function useOptionChain(
 
   const q = useQuery({
     queryKey: queryKeys.chain(sym, expiryDays),
-    queryFn: () => getChain(sym, expiryDays),
+    queryFn: async () => {
+      const key = `${sym}:${expiryDays}`;
+      const hit = chainCache.get(key);
+      if (hit && Date.now() - hit.fetchedAt < CHAIN_CACHE_TTL_MS) return hit.entries;
+      const entries = await getChain(sym, expiryDays);
+      chainCache.set(key, { entries, fetchedAt: Date.now() });
+      return entries;
+    },
     select: mapChainEntries,
     refetchInterval: 4000,
   });
