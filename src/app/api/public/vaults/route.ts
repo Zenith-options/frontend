@@ -64,10 +64,13 @@ function clientIp(req: NextRequest): string {
   return req.headers.get('x-real-ip') ?? 'unknown';
 }
 
-function parseLimit(raw: string | null): number {
-  const n = Number.parseInt(raw ?? '', 10);
-  if (!Number.isFinite(n) || n <= 0) return DEFAULT_LIMIT;
-  return Math.min(n, MAX_LIMIT);
+// Returns null for anything that is not an integer in [1, MAX_LIMIT] (400 upstream).
+function parseLimit(raw: string | null): number | null {
+  if (raw === null) return DEFAULT_LIMIT;
+  if (!/^\d+$/.test(raw)) return null;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1 || n > MAX_LIMIT) return null;
+  return n;
 }
 
 function encodeCursor(offset: number): string {
@@ -128,6 +131,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   const limit = parseLimit(req.nextUrl.searchParams.get('limit'));
+  if (limit === null) {
+    return NextResponse.json(
+      { error: 'invalid_limit' },
+      { status: 400, headers: corsHeaders() },
+    );
+  }
   const offset = decodeCursor(req.nextUrl.searchParams.get('cursor'));
   const cacheKey = `list:${limit}:${offset}`;
 
