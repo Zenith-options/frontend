@@ -1,10 +1,22 @@
 "use client";
 
-import { memo } from "react";
+import { memo, type KeyboardEvent } from "react";
 import { seededRandom, fmtN, fmtK } from "../../../../lib/pricing";
 import type { ChainRow, TradeState } from "./types";
 
 interface Props{chain:ChainRow[];chainLoading:boolean;setTrade:(t:TradeState)=>void;}
+
+// Focus ring only appears on keyboard focus; idle styling is unchanged.
+const FOCUS =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--brand)]";
+
+// Keyboard activation for the clickable cells (they are role="button" divs).
+const onKey = (fn: () => void) => (e: KeyboardEvent<HTMLDivElement>) => {
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    fn();
+  }
+};
 
 // ─── Memoized row ─────────────────────────────────────────────────────────────
 // Each strike row is memoized: only re-renders when its own `row` object
@@ -29,16 +41,22 @@ const ChainRowMemo = memo(function ChainRowMemo({ row, isAtm, setTrade }: RowPro
       <div className="cc">{vol}</div>
       <div className="cc">{oi.toLocaleString()}</div>
       <div
-        className="cc tradeable call"
+        className={`cc tradeable call ${FOCUS}`}
+        role="button"
+        tabIndex={0}
         title="Click to write (sell)"
         onClick={() => setTrade({ row, side: "call", mode: "write" })}
+        onKeyDown={onKey(() => setTrade({ row, side: "call", mode: "write" }))}
       >
         {fmtN(Math.max(0, row.call.premium - sp))}
       </div>
       <div
-        className="cc tradeable call"
+        className={`cc tradeable call ${FOCUS}`}
+        role="button"
+        tabIndex={0}
         title="Click to buy"
         onClick={() => setTrade({ row, side: "call", mode: "buy" })}
+        onKeyDown={onKey(() => setTrade({ row, side: "call", mode: "buy" }))}
       >
         {fmtN(row.call.premium + sp)}
       </div>
@@ -49,16 +67,22 @@ const ChainRowMemo = memo(function ChainRowMemo({ row, isAtm, setTrade }: RowPro
       </div>
       <div className="cc brand">{(row.put.iv * 100).toFixed(1)}</div>
       <div
-        className="cc tradeable put"
+        className={`cc tradeable put ${FOCUS}`}
+        role="button"
+        tabIndex={0}
         title="Click to buy"
         onClick={() => setTrade({ row, side: "put", mode: "buy" })}
+        onKeyDown={onKey(() => setTrade({ row, side: "put", mode: "buy" }))}
       >
         {fmtN(row.put.premium + sp)}
       </div>
       <div
-        className="cc tradeable put"
+        className={`cc tradeable put ${FOCUS}`}
+        role="button"
+        tabIndex={0}
         title="Click to write (sell)"
         onClick={() => setTrade({ row, side: "put", mode: "write" })}
+        onKeyDown={onKey(() => setTrade({ row, side: "put", mode: "write" }))}
       >
         {fmtN(Math.max(0, row.put.premium - sp))}
       </div>
