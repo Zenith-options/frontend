@@ -55,9 +55,17 @@ const qty = useValidatedNumberInput(quantitySchema({ step: 0.01, max: 1_000_000 
 
 ## Where it's used
 
-- **Options trade ticket** (`useTradeTicket` / `TradeTicket`): the contracts
-  field. The ± stepper only moves from a valid value, and Buy/Write and Confirm
-  are disabled while it's invalid.
+- **Options trade ticket** (`useTradeTicket` / `TradeTicket`) does **not** use
+  these schemas yet. The contracts field is a native `type="number"` input, and
+  [`useTradeTicket.ts`](../src/app/options/_components/useTradeTicket.ts)
+  computes the quantity as `Math.max(0.01, parseFloat(contracts) || 1)`. An
+  empty, non-numeric or zero value becomes `1`, and a value below `0.01`
+  becomes `0.01`. The blur handler and the ± stepper apply the same fallback.
+  Buy/Write and Confirm are disabled for insufficient funds, a missing sign-in
+  or an integrity block. They are not disabled for an invalid quantity.
+  **Known gap:** non-finite values are not rejected. `NaN` is replaced by `1`,
+  and `Infinity` passes through `Math.max` unchanged. Rejecting them is tracked
+  separately.
 - **Alerts** (`AlertsPanel`): the threshold price. It warns when the alert
   would trigger immediately.
 - **Portfolio roll**: the new strike is now an editable, validated field. The
