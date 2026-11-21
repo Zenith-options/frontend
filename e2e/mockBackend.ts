@@ -21,6 +21,8 @@ export interface MockOptions {
   vaultSupply?: unknown;
   /** Make the vault supply endpoint fail with 500 (source unavailable). */
   vaultSupplyUnavailable?: boolean;
+  /** LP incentive claim payload returned for `/vaults/{id}/rewards/{wallet}`. */
+  rewardClaim?: unknown;
 }
 
 export interface MockBackend {
@@ -198,6 +200,12 @@ export async function mockBackend(page: Page, opts: MockOptions = {}): Promise<M
         return json({ id: `rd-${state.redemptions.length}`, vault_id: body.vault_id, shares: body.shares, amount: Number(body.shares) * 1.042, status: "redeemed" }, 200);
       }
       if (p === "/vaults/epochs" && req.method() === "GET") return json(epochLedger);
+      // LP incentive claim: zero allocation for every wallet unless a test overrides it.
+      const rewardMatch = p.match(/^\/vaults\/([^/]+)\/rewards\/([^/]+)$/);
+      if (rewardMatch && req.method() === "GET") {
+        const [, vaultId, account] = rewardMatch;
+        return json(opts.rewardClaim ?? { vault_id: vaultId, epoch: 0, account, root: null, cumulative: "0", claimed: "0", proof: [], decimals: 7 });
+      }
       const detailMatch = p.match(/^\/vaults\/([^/]+)$/);
       if (detailMatch && req.method() === "GET") {
         const id = decodeURIComponent(detailMatch[1]);
