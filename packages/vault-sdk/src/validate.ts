@@ -117,3 +117,17 @@ export const parseVaultSummaries = arr(parseVaultSummary);
 export const parseDepositResult = obj<DepositResult>({ tx_id: str });
 
 export const parseWithdrawResult = obj<WithdrawResult>({ tx_id: str, queued: bool });
+
+const DECIMAL_AMOUNT = /^\d+(\.\d+)?$/;
+
+/** Accepts a positive decimal string such as "1" or "1.5"; rejects zero, negatives, and anything else. */
+export function validateAmount(value: unknown): string {
+  if (typeof value !== "string" || !DECIMAL_AMOUNT.test(value)) {
+    throw new VaultSdkError("validation", "amount must be a positive decimal string");
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new VaultSdkError("validation", "amount must be a positive decimal string");
+  }
+  return value;
+}
