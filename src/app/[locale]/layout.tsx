@@ -42,6 +42,8 @@ const localePath = (locale: string) => (locale === routing.defaultLocale ? "/" :
 
 export async function generateMetadata({ params }: LayoutParams): Promise<Metadata> {
   const { locale } = await params;
+  // generateMetadata runs before the layout body, so it must reject unknown locales too.
+  if (!isLocale(locale)) notFound();
   const t = await getTranslations({ locale, namespace: "metadata" });
   return {
     title: t("title"),
