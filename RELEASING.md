@@ -56,6 +56,9 @@ image already published and host available, the redeploy is designed to finish
 in under five minutes. Confirm the version and SHA in the in-app About panel
 after the job completes.
 
+This rollback does not restore vault data. If a release corrupts vault state,
+follow [docs/vault-backup-recovery.md](docs/vault-backup-recovery.md) instead.
+
 ## Dry run and release checklist
 
 Before enabling production deployments, run the release workflow on a fork
