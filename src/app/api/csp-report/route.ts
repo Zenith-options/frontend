@@ -10,6 +10,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_BYTES = 64 * 1024;
+const ACCEPTED_TYPES = new Set(["application/csp-report", "application/reports+json", "application/json"]);
 // Browser extensions inject scripts into every page. Their violations are
 // noise, not attacks on us.
 const EXTENSION_SCHEMES = /^(chrome|moz|safari|safari-web)-extension:/;
@@ -25,6 +26,9 @@ function redact(uri: string): string {
 }
 
 export async function POST(req: Request): Promise<Response> {
+  const type = (req.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+  if (!ACCEPTED_TYPES.has(type)) return new Response("Unsupported Media Type", { status: 415 });
+
   const length = Number(req.headers.get("content-length") ?? 0);
   if (length > MAX_BYTES) return new Response(null, { status: 413 });
 
