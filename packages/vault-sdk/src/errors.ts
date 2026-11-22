@@ -7,7 +7,8 @@
  * - `http`           any other non-2xx response
  * - `transport`      the request never produced an HTTP response (network failure, abort)
  *
- * Messages never include the request body, response body, or auth headers.
+ * HTTP error messages append the backend's `message` (or the status text when the
+ * body has none). They never include the request body or auth headers.
  */
 
 export type VaultErrorKind = "validation" | "capacity" | "queue_conflict" | "http" | "transport";
@@ -35,11 +36,12 @@ export class VaultSdkError extends Error {
   }
 }
 
-/** Maps a non-2xx HTTP status to the SDK error taxonomy. */
-export function httpError(status: number, code?: string): VaultSdkError {
+/** Maps a non-2xx HTTP status to the SDK error taxonomy. `detail` is the backend message or status text. */
+export function httpError(status: number, code?: string, detail?: string): VaultSdkError {
   const options = { status, code };
-  if (status === 402) return new VaultSdkError("capacity", `Vault capacity or limit rejected the request (HTTP ${status})`, options);
-  if (status === 409) return new VaultSdkError("queue_conflict", `Vault queue state conflicts with the request (HTTP ${status})`, options);
-  if (status === 400 || status === 422) return new VaultSdkError("validation", `Vault API rejected the request (HTTP ${status})`, options);
-  return new VaultSdkError("http", `Vault API request failed (HTTP ${status})`, options);
+  const suffix = detail ? `: ${detail}` : "";
+  if (status === 402) return new VaultSdkError("capacity", `Vault capacity or limit rejected the request (HTTP ${status})${suffix}`, options);
+  if (status === 409) return new VaultSdkError("queue_conflict", `Vault queue state conflicts with the request (HTTP ${status})${suffix}`, options);
+  if (status === 400 || status === 422) return new VaultSdkError("validation", `Vault API rejected the request (HTTP ${status})${suffix}`, options);
+  return new VaultSdkError("http", `Vault API request failed (HTTP ${status})${suffix}`, options);
 }

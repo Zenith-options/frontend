@@ -20,6 +20,8 @@ export interface VaultTransportRequest {
 
 export interface VaultTransportResponse {
   status: number;
+  /** HTTP status text, used in error messages when the body has no `message`. */
+  statusText?: string;
   /** Parsed JSON body, or `undefined` when the body is empty or not JSON. */
   body: unknown;
 }
@@ -59,13 +61,13 @@ const defaultTransport: VaultTransport = async ({ method, url, headers, body }) 
     credentials: "same-origin",
   });
   const text = await res.text();
-  return { status: res.status, body: text ? parseJson(text) : undefined };
+  return { status: res.status, statusText: res.statusText, body: text ? parseJson(text) : undefined };
 };
 
-function errorCode(body: unknown): string | undefined {
+function errorField(body: unknown, field: "code" | "message"): string | undefined {
   if (typeof body !== "object" || body === null) return undefined;
-  const code = (body as { code?: unknown }).code;
-  return typeof code === "string" ? code : undefined;
+  const value = (body as Record<string, unknown>)[field];
+  return typeof value === "string" ? value : undefined;
 }
 
 function assertPositive(value: number, name: string): void {
@@ -91,7 +93,9 @@ export function createVaultClient(options: VaultClientOptions): VaultClient {
   }
 
   function checked(res: VaultTransportResponse): unknown {
-    if (res.status < 200 || res.status > 299) throw httpError(res.status, errorCode(res.body));
+    if (res.status < 200 || res.status > 299) {
+      throw httpError(res.status, errorField(res.body, "code"), errorField(res.body, "message") ?? res.statusText);
+    }
     return res.body;
   }
 
