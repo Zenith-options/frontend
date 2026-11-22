@@ -1539,10 +1539,16 @@ function pickOne<T extends string>(raw: string | null, allowed: readonly T[]): T
   return raw !== null && (allowed as readonly string[]).includes(raw) ? (raw as T) : null;
 }
 
-/** Parses a comma-separated id list, dropping blanks and duplicates and capping at VAULT_COMPARE_MAX. */
+/**
+ * Parses a comma-separated id list, dropping blanks, non-numeric entries and
+ * duplicates and capping at VAULT_COMPARE_MAX.
+ */
 export function parseVaultIds(raw: string | null): string[] {
-  if (!raw) return [];
-  const ids = raw.split(",").map(s => s.trim()).filter(Boolean);
+  if (typeof raw !== "string" || !raw) return [];
+  const ids = raw
+    .split(",")
+    .map(s => (typeof s === "string" ? s.trim() : ""))
+    .filter(s => s.length > 0 && /^\d+$/.test(s));
   return [...new Set(ids)].slice(0, VAULT_COMPARE_MAX);
 }
 
