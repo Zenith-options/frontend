@@ -32,6 +32,9 @@ const ChainRowMemo = memo(function ChainRowMemo({ row, isAtm, setTrade }: RowPro
         className="cc tradeable call"
         title="Click to write (sell)"
         onClick={() => setTrade({ row, side: "call", mode: "write" })}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTrade({ row, side: "call", mode: "write" }); } }}
       >
         {fmtN(Math.max(0, row.call.premium - sp))}
       </div>
@@ -39,6 +42,9 @@ const ChainRowMemo = memo(function ChainRowMemo({ row, isAtm, setTrade }: RowPro
         className="cc tradeable call"
         title="Click to buy"
         onClick={() => setTrade({ row, side: "call", mode: "buy" })}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTrade({ row, side: "call", mode: "buy" }); } }}
       >
         {fmtN(row.call.premium + sp)}
       </div>
@@ -52,6 +58,9 @@ const ChainRowMemo = memo(function ChainRowMemo({ row, isAtm, setTrade }: RowPro
         className="cc tradeable put"
         title="Click to buy"
         onClick={() => setTrade({ row, side: "put", mode: "buy" })}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTrade({ row, side: "put", mode: "buy" }); } }}
       >
         {fmtN(row.put.premium + sp)}
       </div>
@@ -59,6 +68,9 @@ const ChainRowMemo = memo(function ChainRowMemo({ row, isAtm, setTrade }: RowPro
         className="cc tradeable put"
         title="Click to write (sell)"
         onClick={() => setTrade({ row, side: "put", mode: "write" })}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTrade({ row, side: "put", mode: "write" }); } }}
       >
         {fmtN(Math.max(0, row.put.premium - sp))}
       </div>
