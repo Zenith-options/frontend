@@ -38,6 +38,11 @@ export function TradeTicket({
         overflowY: "auto", background: "var(--bg-raised)", display: "flex", flexDirection: "column",
       }}>
 
+        {/* Screen-reader mirror of submission status; reuses existing copy, no layout. */}
+        <div role="status" aria-live={tradeError ? "assertive" : "polite"} className="sr-only">
+          {submitting ? "Submitting…" : tradeError ?? ""}
+        </div>
+
         <div style={{
           padding: "12px 16px", borderBottom: "1px solid var(--border-default)",
           display: "flex", alignItems: "flex-start", justifyContent: "space-between",
