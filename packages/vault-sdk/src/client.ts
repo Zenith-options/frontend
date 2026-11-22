@@ -43,11 +43,21 @@ export interface VaultClient {
   withdraw(id: string, shares: number): Promise<WithdrawResult>;
 }
 
-function parseJson(text: string): unknown {
+const BODY_SNIPPET_LIMIT = 120;
+
+function snippet(text: string): string {
+  const trimmed = text.trim();
+  return trimmed.length > BODY_SNIPPET_LIMIT ? `${trimmed.slice(0, BODY_SNIPPET_LIMIT)}…` : trimmed;
+}
+
+function parseJson(text: string, status: number): unknown {
   try {
     return JSON.parse(text);
-  } catch {
-    return undefined;
+  } catch (cause) {
+    throw new VaultSdkError("validation", `Vault API returned a non-JSON body (HTTP ${status}): ${snippet(text)}`, {
+      status,
+      cause,
+    });
   }
 }
 
@@ -59,7 +69,7 @@ const defaultTransport: VaultTransport = async ({ method, url, headers, body }) 
     credentials: "same-origin",
   });
   const text = await res.text();
-  return { status: res.status, body: text ? parseJson(text) : undefined };
+  return { status: res.status, body: text ? parseJson(text, res.status) : undefined };
 };
 
 function errorCode(body: unknown): string | undefined {
