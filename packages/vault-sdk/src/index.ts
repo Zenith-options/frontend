@@ -1,6 +1,7 @@
 export { createVaultClient } from "./client";
 export type { VaultClient, VaultClientOptions, VaultTransport, VaultTransportRequest, VaultTransportResponse } from "./client";
 export { VaultSdkError } from "./errors";
+export { assertAmountPrecision } from "./validate";
 export type { VaultErrorKind, VaultErrorOptions } from "./errors";
 export type {
   DepositResult,

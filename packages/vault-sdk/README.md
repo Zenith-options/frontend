@@ -74,7 +74,18 @@ Every failure is a `VaultSdkError` with a `kind`:
 | `transport` | No HTTP response: network failure or aborted request |
 
 `status` and the backend's string `code` (when the error body has one) are
-also set. Messages never include request or response bodies or auth headers.
+also set. Messages never include request or response bodies or auth headers,
+except for the bounded non-JSON body snippet described below.
+
+### Non-JSON responses
+
+A response is only parsed as JSON when its `Content-Type` is `application/json`
+(parameters such as `; charset=utf-8` are ignored) or a `+json` structured
+suffix such as `application/vnd.api+json`. Anything else — for example an HTML
+error page from a proxy or CDN — throws a `VaultSdkError` with `kind: "http"`,
+the HTTP `status`, and a message that includes the content type and a snippet of
+the body truncated to about 200 characters. This keeps a gateway error page from
+being mistaken for a contract violation or a successful response.
 
 ```ts
 try {

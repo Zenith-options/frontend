@@ -89,14 +89,17 @@ function VaultCompare() {
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
 
+  const hasEnoughIds = ids.length >= 2;
+
   useEffect(() => {
+    if (!hasEnoughIds) return;
     let cancelled = false;
     setError(null);
     fetchVaults()
       .then(v => { if (!cancelled) setVaults(v); })
       .catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : "Unknown error"); });
     return () => { cancelled = true; };
-  }, [attempt]);
+  }, [attempt, hasEnoughIds]);
 
   // Preserve the order from the URL, and drop ids that don't match a vault.
   const selected = useMemo(() => {
@@ -105,7 +108,7 @@ function VaultCompare() {
     return ids.map(id => byId.get(id)).filter((v): v is VaultSummary => Boolean(v));
   }, [vaults, ids]);
 
-  const loading = vaults === null && error === null;
+  const loading = hasEnoughIds && vaults === null && error === null;
   const unknownCount = vaults ? ids.length - selected.length : 0;
 
   return (
@@ -146,7 +149,7 @@ function VaultCompare() {
             </div>
           )}
 
-          {vaults && selected.length < 2 && (
+          {(!hasEnoughIds || (vaults && selected.length < 2)) && (
             <div style={{ padding: "32px 16px", border: "1px dashed var(--border-default)", textAlign: "center", fontSize: 13, color: "var(--text-mid)" }}>
               Select at least 2 vaults to compare.
               <div style={{ marginTop: 12 }}>
