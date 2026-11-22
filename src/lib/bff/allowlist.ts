@@ -60,6 +60,7 @@ export const ALLOWLIST: AllowRule[] = [
   // Vaults
   { pattern: route("/api/v1/vaults"), methods: { GET: "optional" } },
   { pattern: route("/api/v1/vaults/:id"), methods: { GET: "optional" } },
+  { pattern: route("/api/v1/vaults/:id/attestations"), methods: { GET: "none" } },
   { pattern: route("/api/v1/vaults/:id/deposit"), methods: { POST: "required" } },
   { pattern: route("/api/v1/vaults/:id/withdraw"), methods: { POST: "required" } },
 
