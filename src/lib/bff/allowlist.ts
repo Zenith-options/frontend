@@ -133,3 +133,9 @@ export function checkAllowlist(method: string, path: string): AllowDecision {
   const auth = rule.methods[method.toUpperCase() as Method];
   return auth ? { allowed: true, auth } : { allowed: false, status: 405 };
 }
+
+/** Methods the allowlist permits for a path, for the 405 `Allow` header. */
+export function allowedMethods(path: string): Method[] {
+  const rule = ALLOWLIST.find((r) => r.pattern.test(path));
+  return rule ? (Object.keys(rule.methods) as Method[]) : [];
+}

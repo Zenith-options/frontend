@@ -5,7 +5,7 @@
  */
 
 import { BFF_PREFIX, type SessionInfo } from "./constants";
-import { checkAllowlist } from "./allowlist";
+import { allowedMethods, checkAllowlist } from "./allowlist";
 import { checkCsrf, newCsrfToken } from "./csrf";
 import {
   clearedCookie,
@@ -179,7 +179,10 @@ export async function proxy(req: Request, segments: string[]): Promise<Response>
 
   const decision = checkAllowlist(method, path);
   if (!decision.allowed) {
-    return json({ error: decision.status === 404 ? "Not found" : "Method not allowed" }, decision.status);
+    const res = json({ error: decision.status === 404 ? "Not found" : "Method not allowed" }, decision.status);
+    // RFC 9110 §15.5.6: a 405 must list the methods the target supports.
+    if (decision.status === 405) res.headers.set("allow", allowedMethods(path).join(", "));
+    return res;
   }
 
   const ctx = await context(req);
