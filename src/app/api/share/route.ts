@@ -40,6 +40,13 @@ async function findClosedPosition(token: string, id: string): Promise<Position |
   return null;
 }
 
+// Fields the card builders read; a missing one is named in the 400 instead
+// of falling through to a generic error.
+function missingField(body: Record<string, unknown>): string | undefined {
+  const required = body.kind === "trade" ? ["positionId"] : body.kind === "strategy" ? ["templateId", "underlying", "expiryDays"] : ["kind"];
+  return required.find(f => body[f] === undefined || body[f] === null || body[f] === "");
+}
+
 function siteOrigin(req: Request): string {
   return process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? new URL(req.url).origin;
 }
@@ -59,6 +66,8 @@ export async function POST(req: Request) {
   } catch {
     return json({ error: "Body must be JSON" }, 400);
   }
+  const missing = missingField(body);
+  if (missing) return json({ error: `${missing} is required` }, 400);
   const privacy = parsePrivacy(body.privacy);
   const now = new Date();
 
