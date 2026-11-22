@@ -55,6 +55,9 @@ const parsed = parseEnv({
   SOROBAN_RPC_MAX_ATTEMPTS: process.env.SOROBAN_RPC_MAX_ATTEMPTS,
   SOROBAN_RPC_BASE_BACKOFF_MS: process.env.SOROBAN_RPC_BASE_BACKOFF_MS,
   SOROBAN_RPC_CONFIRMATION_TIMEOUT_MS: process.env.SOROBAN_RPC_CONFIRMATION_TIMEOUT_MS,
+  KEEPER_LEASE_TTL_SECONDS: process.env.KEEPER_LEASE_TTL_SECONDS,
+  KEEPER_DEAD_MAN_GRACE_SECONDS: process.env.KEEPER_DEAD_MAN_GRACE_SECONDS,
+  KEEPER_BACKSTOP_INTERVAL_MS: process.env.KEEPER_BACKSTOP_INTERVAL_MS,
 });
 
 export const env = {
@@ -461,6 +464,43 @@ export const sorobanRpcConfig: SorobanRpcConfig = {
     "SOROBAN_RPC_CONFIRMATION_TIMEOUT_MS",
   ),
 };
+
+/**
+ * Off-chain keeper configuration (issue #237).
+ *
+ * The keeper service (backend repo) triggers epoch transitions. Runners share a
+ * lease whose TTL must be shorter than the dead-man's-switch grace window so a
+ * dead leader is replaced before alerting fires. Network selection reuses
+ * `activeStellarNetwork`; nothing here is network-specific.
+ */
+export type KeeperConfig = {
+  /** Leader lease TTL in seconds; a crashed leader is replaced after this. */
+  leaseTtlSeconds: number;
+  /** Alert when no epoch advance is observed within this window of schedule. */
+  deadManGraceSeconds: number;
+  /** Coarse schedule-check interval (ms), used as a backstop to ledger-close events. */
+  backstopIntervalMs: number;
+};
+
+export const keeperConfig: KeeperConfig = {
+  leaseTtlSeconds: parsePositiveInt(parsed.KEEPER_LEASE_TTL_SECONDS, 30, "KEEPER_LEASE_TTL_SECONDS"),
+  deadManGraceSeconds: parsePositiveInt(
+    parsed.KEEPER_DEAD_MAN_GRACE_SECONDS,
+    300,
+    "KEEPER_DEAD_MAN_GRACE_SECONDS",
+  ),
+  backstopIntervalMs: parsePositiveInt(
+    parsed.KEEPER_BACKSTOP_INTERVAL_MS,
+    60_000,
+    "KEEPER_BACKSTOP_INTERVAL_MS",
+  ),
+};
+
+if (keeperConfig.leaseTtlSeconds >= keeperConfig.deadManGraceSeconds) {
+  throw new Error(
+    "KEEPER_LEASE_TTL_SECONDS must be shorter than KEEPER_DEAD_MAN_GRACE_SECONDS so a dead leader is replaced before alerting",
+  );
+}
 
 /**
  * Internal service identities that participate in service-to-service auth
