@@ -98,8 +98,11 @@ export async function getSession(req: Request): Promise<Response> {
   const cookies: CookieSpec[] = [];
   if (!ctx.csrf) cookies.push(csrfCookie(newCsrfToken(), ctx.secure));
 
+  const raw = ctx.cookies[sessionCookieName(ctx.secure)];
+  if (!raw) return json({ error: "Not signed in" }, 401, cookies); // no session cookie at all
+
   if (!ctx.session) {
-    if (ctx.cookies[sessionCookieName(ctx.secure)]) cookies.push(clearSession(ctx)); // expired / tampered
+    cookies.push(clearSession(ctx)); // expired / tampered
     return json(info(null), 200, cookies);
   }
 
