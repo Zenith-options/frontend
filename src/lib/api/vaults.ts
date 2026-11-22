@@ -80,7 +80,8 @@ import { computeVaultHealthScore, type VaultHealthScore } from "../vaultHealth";
  *   POST /api/v1/vaults/{id}/deposit   { amount: number, wallet_address, disclosure_version: string }  → { xdr: string }
  *     The backend builds the unsigned deposit transaction (amounts, NAV and
  *     caps are computed server-side). The client only signs and submits it.
- *     Rejections carry `code`: vault_paused | vault_at_capacity | below_minimum.
+ *     Rejections carry `code`: vault_paused | vault_at_capacity | below_minimum |
+ *     sanctions_blocked | screening_hold (depositor screening; see VAULT_ERROR_CODES).
  *   POST /api/v1/vaults/{id}/withdraw  { shares: number }  → { tx_id: string; queued: boolean; request_id: string }
  *   POST /api/v1/vaults/{id}/withdrawals/{request_id}/cancel → { returned_shares: number }
  *   POST /api/v1/vaults/{id}/emergency-redeem  { shares: number }  → { tx_id: string; penalty_bps: number }
@@ -329,6 +330,10 @@ import { computeVaultHealthScore, type VaultHealthScore } from "../vaultHealth";
  *   401  unauthorized     Session expired. Not retried; re-authenticate.
  *   403  forbidden        Vaults flag off, or wallet not allowlisted. Not retried.
  *   404  not_found        getVault resolves to null.
+ *   403  sanctions_blocked  Depositor address is on a sanctions list or the
+ *                         risk policy blocked it. Not retried; no appeal path in-app.
+ *   423  screening_hold   Risk policy placed the request on compliance hold
+ *                         (hold_for_review). Not retried; shown as "under review".
  *   409  epoch_closed     The epoch closed while the request was in flight.
  *                         Not retried; the user retries in the next deposit window.
  *   400/422 invalid_request
@@ -914,6 +919,9 @@ export const EPOCH_PHASES: readonly EpochPhase[] = ["deposit", "active", "settle
  * Error codes in the v1 contract. `vault_paused` and `vault_at_capacity` are
  * both HTTP 409; the UI distinguishes them so it can say "paused" vs "full".
  * `malformed_response` is client-side only: the body failed decoding.
+ * `sanctions_blocked` (403) and `screening_hold` (423) come from depositor
+ * address screening on deposit, withdrawal, redemption and transfer. Both are
+ * typed so the UI can show a fixed message instead of a generic failure.
  */
 export const VAULT_ERROR_CODES = [
   "vault_not_found",
@@ -924,6 +932,8 @@ export const VAULT_ERROR_CODES = [
   "rate_limited",
   "backend_unavailable",
   "malformed_response",
+  "sanctions_blocked",
+  "screening_hold",
 ] as const;
 export type VaultErrorCode = (typeof VAULT_ERROR_CODES)[number];
 
