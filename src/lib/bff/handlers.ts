@@ -215,7 +215,8 @@ export async function proxy(req: Request, segments: string[]): Promise<Response>
       redirect: "manual",
     } as RequestInit);
   } catch {
-    return json({ error: "Backend unavailable" }, 502);
+    // Stable envelope for network failures; never echo the upstream URL (it may carry query secrets).
+    return json({ error: { code: "upstream_unavailable", message: "Backend unavailable" } }, 502);
   }
   const upstreamMs = performance.now() - upstreamStarted;
 

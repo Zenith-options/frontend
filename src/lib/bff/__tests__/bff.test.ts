@@ -117,6 +117,13 @@ describe("allowlist", () => {
 // ── Proxy ─────────────────────────────────────────────────────────────────────
 
 describe("proxy", () => {
+  it("returns a 502 JSON envelope when the backend is unreachable", async () => {
+    upstream.mockRejectedValueOnce(new TypeError("fetch failed"));
+    const res = await proxyGET(await req(proxied("/api/v1/positions"), { session: true }), ctx("api/v1/positions"));
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: { code: "upstream_unavailable", message: "Backend unavailable" } });
+  });
+
   it("404s non-allowlisted paths without calling the backend", async () => {
     const res = await proxyGET(await req(proxied("/api/v1/auth/me"), { session: true }), ctx("api/v1/auth/me"));
     expect(res.status).toBe(404);
