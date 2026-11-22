@@ -160,8 +160,10 @@ function parseFlags(argv: string[]): Record<string, string> {
 }
 
 if (require.main === module) {
-  const flags = parseFlags(process.argv.slice(2));
-  if (!flags.dataset) throw new Error("usage: vault-backtest --dataset <file> [--delta 0.25] [--epoch-steps 7] [--capacity 1000] [--fee-bps 1000] [--assignment rebuy|hold-cash] [--out <file>]");
+  // --dry-run is a bare boolean flag, so it is removed before parseFlags (which expects value pairs).
+  const dryRun = process.argv.includes("--dry-run");
+  const flags = parseFlags(process.argv.slice(2).filter((arg) => arg !== "--dry-run"));
+  if (!flags.dataset) throw new Error("usage: vault-backtest --dataset <file> [--delta 0.25] [--epoch-steps 7] [--capacity 1000] [--fee-bps 1000] [--assignment rebuy|hold-cash] [--out <file>] [--dry-run]");
   const dataset = JSON.parse(readFileSync(flags.dataset, "utf8")) as Dataset;
   const assignment = (flags.assignment ?? "rebuy") as BacktestConfig["assignment"];
   if (assignment !== "rebuy" && assignment !== "hold-cash") throw new Error(`unknown assignment policy: ${assignment}`);
@@ -173,6 +175,6 @@ if (require.main === module) {
     assignment,
   });
   const json = JSON.stringify(result, null, 2) + "\n";
-  if (flags.out) writeFileSync(flags.out, json);
+  if (flags.out && !dryRun) writeFileSync(flags.out, json);
   else process.stdout.write(json);
 }

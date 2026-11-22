@@ -61,6 +61,17 @@ Every invariant must have a deliberately failing demonstration: mutate the
 contract locally (for example, round shares up on deposit) and confirm the
 harness fails. Record the mutation next to the invariant.
 
+## Backtest script
+
+`npm run backtest:vault` replays the covered-call epoch loop over a dataset
+file (see `scripts/vault-backtest.ts` for the format). Flags:
+`--dataset <file>`, `--delta`, `--epoch-steps`, `--capacity`, `--fee-bps`,
+`--assignment rebuy|hold-cash`, `--out <file>`.
+
+Add `--dry-run` to print the result JSON and skip the `--out` write, for
+trying a parameter set without leaving artifacts. The computation is identical.
+Exit code is 0 on success.
+
 ## Blockers
 
 - Vault contracts, indexer, and vault API are not in this repo. The harness for layers 1–3 must live in (or be pinned to) those repos.
