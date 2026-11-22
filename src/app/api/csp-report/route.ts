@@ -3,6 +3,7 @@
 // (application/reports+json). Violations are normalised, de-noised, and
 // forwarded to monitoring. During the report-only rollout this is the
 // signal used to decide when to flip CSP_MODE=enforce.
+import { NextResponse } from "next/server";
 import { captureMessage } from "../../../lib/monitoring";
 import { normalizeReports } from "../../../lib/security/cspReport";
 
@@ -34,7 +35,7 @@ export async function POST(req: Request): Promise<Response> {
     if (text.length > MAX_BYTES) return new Response(null, { status: 413 });
     body = JSON.parse(text);
   } catch {
-    return new Response(null, { status: 400 });
+    return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
 
   for (const v of normalizeReports(body)) {
