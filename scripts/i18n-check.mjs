@@ -25,7 +25,7 @@ for (const file of readdirSync(dir).filter((f) => f.endsWith(".json") && f !== "
   failed = true;
   console.error(`✗ ${locale}`);
   for (const k of report.missing) console.error(`    missing      ${k}`);
-  for (const k of report.extra) console.error(`    extra        ${k}`);
+  for (const k of report.extra) console.error(`    extra        ${k} (${join(dir, file)})`);
   for (const k of report.empty) console.error(`    empty        ${k}`);
   for (const m of report.placeholderMismatch) console.error(`    placeholders ${m.key}: expected [${m.expected}] got [${m.actual}]`);
 }
