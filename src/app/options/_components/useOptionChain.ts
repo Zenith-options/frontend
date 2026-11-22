@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/api/queryKeys";
 import { EXPIRIES, bs, smileVol } from "../../../lib/pricing";
@@ -141,17 +141,54 @@ export function useOptionChain(
 ) {
   const recordReject = useIntegrityStore((s) => s.recordReject);
 
+  // Monotonically increasing request id. Every fetch (and every market
+  // switch) claims a new id; only the latest id may commit state, so a stale
+  // response that resolves after an abort can never overwrite newer data.
+  const requestIdRef = useRef(0);
+  const committedIdRef = useRef(0);
+  const committedKeyRef = useRef<string | null>(null);
+
+  const marketKey = `${sym}:${expiryDays}`;
+
+  // A market switch invalidates every in-flight request: claim a fresh id so
+  // responses started for the previous market can never commit.
+  const lastMarketKeyRef = useRef(marketKey);
+  if (lastMarketKeyRef.current !== marketKey) {
+    lastMarketKeyRef.current = marketKey;
+    requestIdRef.current += 1;
+  }
+
   const q = useQuery({
     queryKey: queryKeys.chain(sym, expiryDays),
-    queryFn: () => getChain(sym, expiryDays),
-    select: mapChainEntries,
+    queryFn: async () => {
+      const id = ++requestIdRef.current;
+      const entries = await getChain(sym, expiryDays);
+      return { id, entries };
+    },
+    select: (res) => ({ id: res.id, rows: mapChainEntries(res.entries) }),
     refetchInterval: 4000,
   });
 
   const t = expiryDays / 365;
 
+  // Commit the query result only if it belongs to the latest request for the
+  // currently selected market. Anything older is dropped.
+  const committed = useMemo(() => {
+    if (!q.data) return null;
+    if (q.data.id < requestIdRef.current) return null;
+    if (committedKeyRef.current !== marketKey) {
+      committedKeyRef.current = marketKey;
+      committedIdRef.current = q.data.id;
+    } else if (q.data.id < committedIdRef.current) {
+      return null;
+    } else {
+      committedIdRef.current = q.data.id;
+    }
+    return q.data.rows;
+  }, [q.data, marketKey]);
+
   const chain = useMemo((): ChainRow[] => {
-    if (q.data) return q.data;
+    if (committed) return committed;
     if (!q.isError) return [];
     // Backend unreachable — fall back to the local Black-Scholes calc
     // so the chain still renders something usable.
