@@ -38,6 +38,32 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /public/vaults:
+    get:
+      operationId: listPublicVaults
+      summary: List public vaults
+      description: Unauthenticated, read-only, paginated list for partner integrations. Served from /api/public/vaults, not /api/v1.
+      servers:
+        - url: /api
+      responses:
+        "200":
+          description: Public vault page. Only successful responses are cacheable; error responses carry no Cache-Control header.
+          headers:
+            Cache-Control:
+              description: Cache policy for CDNs and browsers.
+              schema: { type: string, example: "public, max-age=30, stale-while-revalidate=60" }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { type: object } }
+                  pagination:
+                    type: object
+                    properties:
+                      limit: { type: integer }
+                      nextCursor: { type: string, nullable: true }
+                      total: { type: integer }
   /vaults/{id}:
     get:
       operationId: getVault

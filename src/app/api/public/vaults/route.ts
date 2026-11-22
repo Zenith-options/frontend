@@ -10,7 +10,7 @@ import { getVaults } from '@/lib/api/vaults';
  * Contract:
  *  - GET /api/public/vaults?limit=&cursor=
  *  - Returns only non-sensitive, public projection fields (no per-depositor data).
- *  - Caching: `Cache-Control: public, s-maxage=60, stale-while-revalidate=300`
+ *  - Caching: `Cache-Control: public, max-age=30, stale-while-revalidate=60` on 200s only; errors are uncached.
  *  - CORS: `Access-Control-Allow-Origin: *` (read-only, no credentials)
  *  - Pagination: `limit` (1-100, default 20) + opaque `cursor`; `nextCursor` in body.
  *  - Rate limits: per-IP (60 req/min) and per-API-key (600 req/min) for higher tiers.
@@ -41,7 +41,7 @@ function corsHeaders(): Record<string, string> {
 
 function cacheHeaders(): Record<string, string> {
   return {
-    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+    'Cache-Control': 'public, max-age=30, stale-while-revalidate=60',
     'Vary': 'Origin',
   };
 }
@@ -105,7 +105,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (process.env.NEXT_PUBLIC_VAULTS !== 'true') {
     return NextResponse.json(
       { error: 'vaults_unavailable' },
-      { status: 404, headers: { ...corsHeaders(), ...cacheHeaders() } },
+      { status: 404, headers: corsHeaders() },
     );
   }
 
