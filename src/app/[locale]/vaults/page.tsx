@@ -228,7 +228,7 @@ function VaultsIndex() {
 
           {/* Error with retry */}
           {vaultsEnabled && error && (
-            <div role="alert" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "12px 16px", border: "1px solid var(--put)", background: "var(--put-dim)", color: "var(--put)", fontSize: 12 }}>
+            <div role="status" aria-live="polite" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "12px 16px", border: "1px solid var(--put)", background: "var(--put-dim)", color: "var(--put)", fontSize: 12 }}>
               <span>Failed to load vaults: {error}</span>
               <button type="button" onClick={() => setAttempt(a => a + 1)} style={{
                 background: "none", border: "1px solid var(--put)", color: "var(--put)", padding: "4px 12px", cursor: "pointer", fontSize: 11,
@@ -271,7 +271,7 @@ function VaultsIndex() {
 
           {/* Empty */}
           {vaultsEnabled && vaults && rows.length === 0 && (
-            <div style={{ padding: "32px 16px", border: "1px dashed var(--border-default)", textAlign: "center", fontSize: 13, color: "var(--text-mid)" }}>
+            <div role="status" aria-live="polite" style={{ padding: "32px 16px", border: "1px dashed var(--border-default)", textAlign: "center", fontSize: 13, color: "var(--text-mid)" }}>
               {vaults.length === 0 ? "No vaults are available yet." : "No vaults match these filters."}
               {hasFilters && (
                 <div style={{ marginTop: 12 }}>
