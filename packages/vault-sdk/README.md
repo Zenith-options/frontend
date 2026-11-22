@@ -73,8 +73,11 @@ Every failure is a `VaultSdkError` with a `kind`:
 | `http` | Any other non-2xx response |
 | `transport` | No HTTP response: network failure or aborted request |
 
-`status` and the backend's string `code` (when the error body has one) are
-also set. Messages never include request or response bodies or auth headers.
+For HTTP errors, `status` is set. `code` is set to the backend's string `code`
+when the error body has one. The message ends with the backend's `message`
+field when present, otherwise with the HTTP status text (for example, a
+non-JSON body), e.g. `Vault API rejected the request (HTTP 400): amount too
+small`. Messages never include request bodies or auth headers.
 
 ```ts
 try {
