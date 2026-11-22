@@ -24,6 +24,8 @@ export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: 
   const { account, open: openBackendPosition } = useBackendData();
   const balance = account?.balance ?? 0;
   const qty = Math.max(0.01, parseFloat(contracts) || 1);
+  // Checked on the raw input: `|| 1` turns NaN into 1, so qty alone never shows it.
+  const qtyIsFinite = contracts.trim() === "" || Number.isFinite(parseFloat(contracts));
   const tradeGreeks = trade ? (trade.side === "call" ? trade.row.call : trade.row.put) : null;
   const collateral =
     trade && trade.mode === "write"
@@ -45,6 +47,10 @@ export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: 
   const integrityBlocked = isTradingBlocked(sym);
 
   const execTrade = async () => {
+    if (!qtyIsFinite) {
+      setTradeError("Enter a valid amount.");
+      return;
+    }
     if (!trade || !tradeGreeks || insufficientFunds || submitting || integrityBlocked) return;
     setSubmitting(true);
     setTradeError(null);
