@@ -33,8 +33,12 @@ export async function POST(req: Request): Promise<Response> {
     const text = await req.text();
     if (text.length > MAX_BYTES) return new Response(null, { status: 413 });
     body = JSON.parse(text);
-  } catch {
-    return new Response(null, { status: 400 });
+  } catch (err) {
+    // Log only the error and content-type: the body may carry URLs with tokens.
+    // 204 (not 400) so browsers don't retry in a storm.
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[csp] unparseable report: ${message} content-type=${req.headers.get("content-type") ?? "none"}`);
+    return new Response(null, { status: 204 });
   }
 
   for (const v of normalizeReports(body)) {
