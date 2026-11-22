@@ -20,24 +20,34 @@ docker compose --profile full up
 # → backend:  http://localhost:8081
 ```
 
-## Runtime environment variables
+## Environment variables
 
-Set these at container start time — no image rebuild needed:
+These are the variables validated by `src/env-schema.cjs`. Variables marked
+**Required** must be set for a production build (`NODE_ENV=production`).
+Unset optional variables fall back to the default shown.
 
-| Variable | Default | Description |
-|---|---|---|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8081` | Zenith backend base URL |
-| `NEXT_PUBLIC_RPC_URL` | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint |
-| `NEXT_PUBLIC_NETWORK` | `testnet` | `mainnet` or `testnet` |
-| `NEXT_PUBLIC_CONTRACT_ID` | _(empty)_ | Soroban contract ID |
-| `MOCK_MODE` | `true` | Set to `false` to disable mock data |
-
-### How runtime injection works
-
-NEXT_PUBLIC_* vars are normally baked into the JS bundle at build time.
-Zenith solves this with a `/api/runtime-config` route that reads
-`process.env` at request time. The client SDK fetches this route once on
-boot and caches it for the tab's lifetime.
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `NODE_ENV` | No | `development` | Set by Next.js; do not override in normal use |
+| `NEXT_PUBLIC_API_URL` | Yes (production) | `http://localhost:8081` | Zenith backend base URL |
+| `NEXT_PUBLIC_STELLAR_NETWORK` | Yes (production) | `testnet` | `testnet` or `mainnet` |
+| `NEXT_PUBLIC_STELLAR_TESTNET_CONTRACT_ID` | Yes (production, testnet) | _(empty)_ | Soroban contract ID used when the network is `testnet` |
+| `NEXT_PUBLIC_STELLAR_MAINNET_CONTRACT_ID` | Yes (production, mainnet) | _(empty)_ | Soroban contract ID used when the network is `mainnet` |
+| `NEXT_PUBLIC_APP_VERSION` | No | `0.1.0` | Version string shown in the app |
+| `NEXT_PUBLIC_BUILD_SHA` | No | `local` | Git commit SHA shown in the app |
+| `NEXT_PUBLIC_VAULTS` | No | `mock` | Vault data source: `mock` or `live` |
+| `NEXT_PUBLIC_CONTRACT_GOVERNOR_TESTNET` | No | _(empty)_ | Governor contract ID on testnet |
+| `NEXT_PUBLIC_CONTRACT_GOVERNOR_MAINNET` | No | _(empty)_ | Governor contract ID on mainnet |
+| `NEXT_PUBLIC_CONTRACT_MARKET_TESTNET` | No | _(empty)_ | Market contract ID on testnet |
+| `NEXT_PUBLIC_CONTRACT_MARKET_MAINNET` | No | _(empty)_ | Market contract ID on mainnet |
+| `NEXT_PUBLIC_CONTRACT_VAULT_TESTNET` | No | _(empty)_ | Vault contract ID on testnet |
+| `NEXT_PUBLIC_CONTRACT_VAULT_MAINNET` | No | _(empty)_ | Vault contract ID on mainnet |
+| `NEXT_PUBLIC_CONTRACT_ORACLE_TESTNET` | No | _(empty)_ | Oracle contract ID on testnet |
+| `NEXT_PUBLIC_CONTRACT_ORACLE_MAINNET` | No | _(empty)_ | Oracle contract ID on mainnet |
+| `NEXT_PUBLIC_CONTRACT_TIMELOCK_TESTNET` | No | _(empty)_ | Timelock contract ID on testnet |
+| `NEXT_PUBLIC_CONTRACT_TIMELOCK_MAINNET` | No | _(empty)_ | Timelock contract ID on mainnet |
+| `NEXT_PUBLIC_CONTRACT_DEPLOYER_TESTNET` | No | _(empty)_ | Deployer contract ID on testnet |
+| `NEXT_PUBLIC_CONTRACT_DEPLOYER_MAINNET` | No | _(empty)_ | Deployer contract ID on mainnet |
 
 ## Building a custom image
 
@@ -55,9 +65,9 @@ variables.
 ## Production checklist
 
 - [ ] Set `NEXT_PUBLIC_API_URL` to your real backend URL
-- [ ] Set `NEXT_PUBLIC_NETWORK=mainnet` for mainnet deployment
-- [ ] Set `NEXT_PUBLIC_CONTRACT_ID` to the deployed Soroban contract ID
-- [ ] Set `MOCK_MODE=false`
+- [ ] Set `NEXT_PUBLIC_STELLAR_NETWORK=mainnet` for mainnet deployment
+- [ ] Set `NEXT_PUBLIC_STELLAR_MAINNET_CONTRACT_ID` (or the testnet variant) to the deployed Soroban contract ID
+- [ ] Set `NEXT_PUBLIC_VAULTS=live` to use the backend instead of mock vault data
 - [ ] Put the container behind a TLS-terminating reverse proxy (nginx, Caddy)
 - [ ] Configure your CSP to allow the API and RPC origins
 
