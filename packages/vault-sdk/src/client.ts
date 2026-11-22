@@ -9,7 +9,13 @@
 
 import { httpError, VaultSdkError } from "./errors";
 import type { DepositResult, VaultDetail, VaultSummary, WithdrawResult } from "./types";
-import { parseDepositResult, parseVaultDetail, parseVaultSummaries, parseWithdrawResult } from "./validate";
+import {
+  assertAmountPrecision,
+  parseDepositResult,
+  parseVaultDetail,
+  parseVaultSummaries,
+  parseWithdrawResult,
+} from "./validate";
 
 export interface VaultTransportRequest {
   method: "GET" | "POST";
@@ -144,12 +150,14 @@ export function createVaultClient(options: VaultClientOptions): VaultClient {
 
     async deposit(id, amount) {
       assertPositive(amount, "amount");
+      assertAmountPrecision(amount, "amount");
       const res = await send("POST", `${vaultPath(id)}/deposit`, { amount });
       return parseDepositResult(checked(res), "DepositResult");
     },
 
     async withdraw(id, shares) {
       assertPositive(shares, "shares");
+      assertAmountPrecision(shares, "shares");
       const res = await send("POST", `${vaultPath(id)}/withdraw`, { shares });
       return parseWithdrawResult(checked(res), "WithdrawResult");
     },

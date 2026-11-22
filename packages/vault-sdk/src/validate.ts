@@ -117,3 +117,24 @@ export const parseVaultSummaries = arr(parseVaultSummary);
 export const parseDepositResult = obj<DepositResult>({ tx_id: str });
 
 export const parseWithdrawResult = obj<WithdrawResult>({ tx_id: str, queued: bool });
+
+/** Stellar assets carry at most 7 fractional digits. */
+const MAX_FRACTIONAL_DIGITS = 7;
+
+/**
+ * Rejects amounts with more fractional digits than a Stellar asset supports.
+ * Throws a `validation` VaultSdkError naming the offending value.
+ */
+export function assertAmountPrecision(value: number, name = "amount"): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new VaultSdkError("validation", `${name} must be a finite number, received ${String(value)}`);
+  }
+  const scaled = Math.abs(value) * 10 ** MAX_FRACTIONAL_DIGITS;
+  if (Math.abs(scaled - Math.round(scaled)) > 1e-6) {
+    throw new VaultSdkError(
+      "validation",
+      `${name} must have at most ${MAX_FRACTIONAL_DIGITS} decimal places, received ${value}`,
+    );
+  }
+  return value;
+}
