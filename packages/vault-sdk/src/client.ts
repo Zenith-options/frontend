@@ -22,6 +22,8 @@ export interface VaultTransportResponse {
   status: number;
   /** Parsed JSON body, or `undefined` when the body is empty or not JSON. */
   body: unknown;
+  /** Raw `Content-Type` header of the response, when the transport can observe it. */
+  contentType?: string;
 }
 
 export type VaultTransport = (request: VaultTransportRequest) => Promise<VaultTransportResponse>;
@@ -51,6 +53,20 @@ function parseJson(text: string): unknown {
   }
 }
 
+const SNIPPET_LIMIT = 200;
+
+/** True when the media type is `application/json` or a `+json` structured suffix. */
+function isJsonContentType(contentType: string | undefined): boolean {
+  if (!contentType) return false;
+  const mediaType = contentType.split(";")[0]!.trim().toLowerCase();
+  return mediaType === "application/json" || /^[^/\s]+\/[^/\s]+\+json$/.test(mediaType);
+}
+
+function snippet(text: string): string {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  return collapsed.length > SNIPPET_LIMIT ? `${collapsed.slice(0, SNIPPET_LIMIT)}…` : collapsed;
+}
+
 const defaultTransport: VaultTransport = async ({ method, url, headers, body }) => {
   const res = await fetch(url, {
     method,
@@ -58,8 +74,16 @@ const defaultTransport: VaultTransport = async ({ method, url, headers, body }) 
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: "same-origin",
   });
+  const contentType = res.headers.get("content-type") ?? undefined;
   const text = await res.text();
-  return { status: res.status, body: text ? parseJson(text) : undefined };
+  if (text && !isJsonContentType(contentType)) {
+    throw new VaultSdkError(
+      "http",
+      `Vault API returned a non-JSON response (HTTP ${res.status}, content-type ${contentType ?? "missing"}): ${snippet(text)}`,
+      { status: res.status },
+    );
+  }
+  return { status: res.status, body: text ? parseJson(text) : undefined, contentType };
 };
 
 function errorCode(body: unknown): string | undefined {
@@ -91,6 +115,13 @@ export function createVaultClient(options: VaultClientOptions): VaultClient {
   }
 
   function checked(res: VaultTransportResponse): unknown {
+    if (res.contentType !== undefined && !isJsonContentType(res.contentType)) {
+      throw new VaultSdkError(
+        "http",
+        `Vault API returned a non-JSON response (HTTP ${res.status}, content-type ${res.contentType})`,
+        { status: res.status },
+      );
+    }
     if (res.status < 200 || res.status > 299) throw httpError(res.status, errorCode(res.body));
     return res.body;
   }
