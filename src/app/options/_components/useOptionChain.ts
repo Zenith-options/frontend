@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/api/queryKeys";
 import { EXPIRIES, bs, smileVol } from "../../../lib/pricing";
@@ -191,5 +191,9 @@ export function useOptionChain(
     return warning;
   }, [q.data, spot, sym, recordReject]);
 
-  return { chain, loading: q.isLoading, error: q.error, chainIntegrityWarning };
+  const refetch = useCallback(() => {
+    void q.refetch();
+  }, [q.refetch]);
+
+  return { chain, loading: q.isLoading, error: q.error, chainIntegrityWarning, refetch };
 }
