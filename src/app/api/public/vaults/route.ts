@@ -70,6 +70,12 @@ function parseLimit(raw: string | null): number {
   return Math.min(n, MAX_LIMIT);
 }
 
+const CURSOR_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+function isValidCursor(raw: string): boolean {
+  return CURSOR_PATTERN.test(raw);
+}
+
 function encodeCursor(offset: number): string {
   return Buffer.from(String(offset), 'utf8').toString('base64url');
 }
@@ -128,7 +134,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   const limit = parseLimit(req.nextUrl.searchParams.get('limit'));
-  const offset = decodeCursor(req.nextUrl.searchParams.get('cursor'));
+  const rawCursor = req.nextUrl.searchParams.get('cursor');
+  if (rawCursor !== null && !isValidCursor(rawCursor)) {
+    return NextResponse.json(
+      { error: 'invalid_request', message: 'Invalid cursor parameter' },
+      { status: 400, headers: { ...corsHeaders(), ...cacheHeaders() } },
+    );
+  }
+  const offset = decodeCursor(rawCursor);
   const cacheKey = `list:${limit}:${offset}`;
 
   const cached = publicCache.get(cacheKey);
