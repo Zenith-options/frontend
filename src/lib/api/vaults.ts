@@ -60,6 +60,7 @@ import { computeVaultHealthScore, type VaultHealthScore } from "../vaultHealth";
  *   GET  /{id}                                              → VaultDetail | 404
  *   GET  /{id}/nav            ?from&to&limit&cursor         → Page<NavPoint>
  *   GET  /{id}/epochs         ?from&to&limit&cursor         → Page<EpochRecord>
+ *   GET  /{id}/attestations   ?limit&cursor                 → Page<AttestationRecord>  (public PoR, newest first)
  *   POST /{id}/deposit        { amount }                    → { tx_id }
  *   POST /{id}/withdraw       { shares }                    → { tx_id, queued }
  *
@@ -539,6 +540,57 @@ export type NavPointWire = z.infer<typeof NavPointSchema>;
 
 const pageOf = <T extends z.ZodTypeAny>(item: T) =>
   z.object({ items: z.array(item), next_cursor: z.string().nullable() });
+
+// Proof-of-reserves attestation (public, read-only). Amounts are integer base
+// units; `nav` and `share_supply` are decimal strings. Pages are newest-first.
+const HexHash32Schema = z.string().regex(/^0x[0-9a-f]{64}$/, "must be 0x-prefixed 32-byte hex");
+
+export const AttestationAssetSchema = z.object({
+  asset: z.string().min(1),
+  amount: z.string().regex(/^\d+$/, "must be an integer base-unit string"),
+  decimals: z.number().int().nonnegative(),
+  price: DecimalStringSchema,
+  price_at: InstantSchema,
+});
+
+export const AttestationRecordSchema = z.object({
+  schema_version: z.literal(1),
+  vault_id: z.string().min(1),
+  ledger_sequence: z.number().int().nonnegative(),
+  attested_at: InstantSchema,
+  assets: z.array(AttestationAssetSchema),
+  nav: DecimalStringSchema,
+  nav_per_share: DecimalStringSchema,
+  share_supply: DecimalStringSchema,
+  input_hash: HexHash32Schema,
+  merkle_root: HexHash32Schema,
+  signing_key_id: z.string().min(1),
+  signature: z.string().min(1),
+});
+
+export const AttestationPageSchema = pageOf(AttestationRecordSchema);
+
+export type AttestationAssetWire = z.infer<typeof AttestationAssetSchema>;
+export type AttestationRecordWire = z.infer<typeof AttestationRecordSchema>;
+
+/**
+ * GET /api/v1/vaults/{id}/attestations?limit&cursor → Page<AttestationRecord>.
+ * The first item is the latest attestation; the rest is append-only history.
+ * Responses are validated at the boundary; a malformed record rejects the call.
+ */
+export async function fetchVaultAttestations(
+  id: string,
+  opts: { limit?: number; cursor?: string } = {},
+): Promise<z.infer<typeof AttestationPageSchema>> {
+  if (process.env.NEXT_PUBLIC_VAULTS === "live") {
+    const qs = new URLSearchParams();
+    if (opts.limit) qs.set("limit", String(opts.limit));
+    if (opts.cursor) qs.set("cursor", opts.cursor);
+    const raw = await apiGet<unknown>(`/api/v1/vaults/${encodeURIComponent(id)}/attestations?${qs.toString()}`);
+    return AttestationPageSchema.parse(raw);
+  }
+  return { items: [], next_cursor: null };
+}
 
 // ---------------------------------------------------------------------------
 // UI types (camelCase, display-ready)
