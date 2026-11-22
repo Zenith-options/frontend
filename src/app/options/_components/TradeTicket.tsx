@@ -23,13 +23,13 @@ export function TradeTicket({
   const {
     showTradeConfirm, setShowTradeConfirm, tradeError, setTradeError,
     submitting, balance, qty, tradeGreeks, collateral,
-    insufficientFunds, notSignedIn, integrityBlocked, execTrade,
+    insufficientFunds, notSignedIn, canSubmit, integrityBlocked, execTrade,
   } = useTradeTicket({ trade, sym, expiry, spot, contracts, onDone: onExecuted });
 
   if (!trade || !tradeGreeks) return null;
 
   // Any condition that disables the action button.
-  const actionDisabled = insufficientFunds || notSignedIn || integrityBlocked;
+  const actionDisabled = insufficientFunds || !canSubmit || integrityBlocked;
 
   return (
     <>
@@ -248,6 +248,11 @@ export function TradeTicket({
               ? "⚠ Data integrity check failed"
               : `${trade.mode === "write" ? "Write" : "Buy"} ${trade.side.toUpperCase()} @ ${fmtK(trade.row.strike)}`}
           </button>
+          {!canSubmit && (
+            <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-lo)" }}>
+              Connect your wallet to enable trading.
+            </div>
+          )}
         </div>
 
         <div style={{ padding: "14px 16px" }}>

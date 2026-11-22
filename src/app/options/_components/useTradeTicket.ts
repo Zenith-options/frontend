@@ -36,6 +36,8 @@ export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: 
     : 0;
   const insufficientFunds = balance < requiredFunds;
   const notSignedIn = !token;
+  /** False when no wallet is connected; the ticket submit button is disabled. */
+  const canSubmit = !notSignedIn;
 
   // ── Integrity block ───────────────────────────────────────────────────────
   // Read whether trading is currently blocked for this symbol.  This is a
@@ -78,6 +80,8 @@ export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: 
     collateral,
     insufficientFunds,
     notSignedIn,
+    /** False when the wallet is disconnected. */
+    canSubmit,
     /** True when the integrity guard has flagged this symbol as suspect. */
     integrityBlocked,
     execTrade,
