@@ -159,10 +159,24 @@ function parseFlags(argv: string[]): Record<string, string> {
   return flags;
 }
 
+function loadDataset(path: string): Dataset {
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch (err) {
+    throw new Error(`failed to read dataset file ${path}: ${(err as Error).message}`);
+  }
+  try {
+    return JSON.parse(raw) as Dataset;
+  } catch (err) {
+    throw new Error(`failed to parse dataset file ${path}: ${(err as Error).message}`);
+  }
+}
+
 if (require.main === module) {
   const flags = parseFlags(process.argv.slice(2));
   if (!flags.dataset) throw new Error("usage: vault-backtest --dataset <file> [--delta 0.25] [--epoch-steps 7] [--capacity 1000] [--fee-bps 1000] [--assignment rebuy|hold-cash] [--out <file>]");
-  const dataset = JSON.parse(readFileSync(flags.dataset, "utf8")) as Dataset;
+  const dataset = loadDataset(flags.dataset);
   const assignment = (flags.assignment ?? "rebuy") as BacktestConfig["assignment"];
   if (assignment !== "rebuy" && assignment !== "hold-cash") throw new Error(`unknown assignment policy: ${assignment}`);
   const result = runCoveredCall(dataset, {
