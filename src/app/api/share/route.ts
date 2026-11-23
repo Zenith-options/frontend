@@ -17,6 +17,27 @@ import { getSigningSecret, ShareConfigError, signCard } from "../../../lib/share
 
 const MAX_HISTORY_PAGES = 25;
 
+// Per-field caps derived from the OG card layout (src/app/api/og/trade/route.tsx
+// → src/lib/share/cardImage.tsx, 1200×630): the underlying renders at 72px
+// Fraunces on one line, structure and pnlLabel at 32px/22px on one line, and
+// the wallet is always the truncated "GABC…WXYZ" shape. Anything longer can't
+// be displayed, so it is rejected rather than silently truncated.
+export const SHARE_FIELD_LIMITS = {
+  positionId: 64,
+  templateId: 64,
+  underlying: 10,
+  wallet: 9,
+} as const;
+
+/** Returns a 400 response naming the field and its limit, or null when within limits. */
+function checkLength(field: keyof typeof SHARE_FIELD_LIMITS, value: unknown): Response | null {
+  const max = SHARE_FIELD_LIMITS[field];
+  if (typeof value === "string" && value.length > max) {
+    return json({ error: `${field} must be at most ${max} characters` }, 400);
+  }
+  return null;
+}
+
 const json = (body: unknown, status = 200) =>
   Response.json(body, { status, headers: { "cache-control": "no-store" } });
 
@@ -62,11 +83,16 @@ export async function POST(req: Request) {
   const privacy = parsePrivacy(body.privacy);
   const now = new Date();
 
+  for (const field of ["positionId", "templateId", "underlying", "wallet"] as const) {
+    const tooLong = checkLength(field, body[field]);
+    if (tooLong) return tooLong;
+  }
+
   let card;
   if (body.kind === "trade") {
     const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
     if (!token) return json({ error: "Sign in to share a trade" }, 401);
-    if (typeof body.positionId !== "string" || body.positionId.length > 64) return json({ error: "positionId is required" }, 400);
+    if (typeof body.positionId !== "string" || body.positionId.length > SHARE_FIELD_LIMITS.positionId) return json({ error: "positionId is required" }, 400);
     try {
       const position = await findClosedPosition(token, body.positionId);
       card = position ? cardFromPosition(position, privacy, now) : null;

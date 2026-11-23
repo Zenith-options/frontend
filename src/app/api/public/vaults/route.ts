@@ -13,11 +13,16 @@ import { getVaults } from '@/lib/api/vaults';
  *  - Caching: `Cache-Control: public, s-maxage=60, stale-while-revalidate=300`
  *  - CORS: `Access-Control-Allow-Origin: *` (read-only, no credentials)
  *  - Pagination: `limit` (1-100, default 20) + opaque `cursor`; `nextCursor` in body.
+ *  - Unknown query parameters are rejected with 400 `{ error: 'unknown_parameter', parameter }`.
  *  - Rate limits: per-IP (60 req/min) and per-API-key (600 req/min) for higher tiers.
  */
 
 export const runtime = 'edge';
 export const revalidate = 60;
+
+// Allowlist of query parameter names this route reads. Kept in sync with
+// docs/api/vaults-v1.openapi.yaml (listVaults) and docs/public-vault-api.md.
+const ALLOWED_QUERY_PARAMS = ['limit', 'cursor'] as const;
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -125,6 +130,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         },
       },
     );
+  }
+
+  for (const key of req.nextUrl.searchParams.keys()) {
+    if (!(ALLOWED_QUERY_PARAMS as readonly string[]).includes(key)) {
+      return NextResponse.json(
+        { error: 'unknown_parameter', parameter: key },
+        { status: 400, headers: { ...corsHeaders(), ...cacheHeaders() } },
+      );
+    }
   }
 
   const limit = parseLimit(req.nextUrl.searchParams.get('limit'));

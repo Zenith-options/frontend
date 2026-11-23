@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ApiError } from "../../../../lib/api/client";
 import { useBackendData } from "../../../../lib/context/BackendDataContext";
 import { useWalletStore } from "../../../../lib/store/wallet";
@@ -15,6 +15,7 @@ export function useStrategyPreview({sym,expiryDays,spot,marketVol,qty,onExecuted
   const [selectedStrategy,setSelectedStrategy]=useState<StrategyTemplate|null>(null);
   const [showStrategyConfirm,setShowStrategyConfirm]=useState(false);
   const [tradeError,setTradeError]=useState<string|null>(null);
+  const [previewError,setPreviewError]=useState<string|null>(null);
   const [submitting,setSubmitting]=useState(false);
   const token=useWalletStore(s=>s.session);
   const {account,openStrategy:openBackendStrategy}=useBackendData();
@@ -39,10 +40,14 @@ export function useStrategyPreview({sym,expiryDays,spot,marketVol,qty,onExecuted
   const strategyInsufficientFunds=pricedLegs.length>0&&balance<strategyRequiredFunds;
   const notSignedIn=!token;
 
+  // Clear any stale preview error as soon as the inputs change (new request).
+  useEffect(()=>{setPreviewError(null);},[sym,expiryDays,spot,marketVol,qty,selectedStrategy]);
+
   const execStrategy=async()=>{
     if(!selectedStrategy||pricedLegs.length===0||strategyInsufficientFunds||submitting)return;
     setSubmitting(true);
     setTradeError(null);
+    setPreviewError(null);
     try{
       await openBackendStrategy(pricedLegs.map(leg=>({
         underlying:sym,strike:leg.strike,expiryDays,
@@ -52,12 +57,15 @@ export function useStrategyPreview({sym,expiryDays,spot,marketVol,qty,onExecuted
       setShowStrategyConfirm(false);
       onExecuted();
     }catch(err){
-      setTradeError(err instanceof ApiError?err.message:"Failed to execute strategy");
+      const message=err instanceof ApiError?err.message:"Failed to execute strategy";
+      setTradeError(message);
+      setPreviewError(message);
     }finally{
       setSubmitting(false);
     }
   };
   return{selectedStrategy,setSelectedStrategy,showStrategyConfirm,setShowStrategyConfirm,tradeError,setTradeError,
+    previewError,setPreviewError,
     submitting,balance,pricedLegs,strategyNetPremium,strategyCollateral,strategyRequiredFunds,
     strategyInsufficientFunds,notSignedIn,execStrategy};
 }

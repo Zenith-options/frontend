@@ -140,6 +140,30 @@ flapping on transient blips. Alerts are suppressed during a documented wind-down
 closed-epoch window (`vault_epoch_state == "closed"`), so expected behaviour does
 not page.
 
+## Alert routing
+
+Source of truth for frontend Sentry alert rules, conditions, and destinations is
+[`docs/sentry-alerts.md`](./sentry-alerts.md); this table only maps them to the
+runbooks below.
+
+| Alert | Severity | Route | Runbook |
+| --- | --- | --- | --- |
+| Trade submission error spike (`context:trade-submit` > 5 in 10 min) | `critical` | Slack `#alerts-trading` | [api-availability](#api-availability) |
+| Chain load failure rate (`chain.load` error rate > 20% over 5 min) | `warning` | Page on-call | [api-availability](#api-availability) |
+| Unhandled exceptions spike (new issues > 3 in 5 min) | `info` | Slack `#alerts-frontend` | [api-availability](#api-availability) |
+| Release regression (new issue in last release) | `warning` | PR author + Slack `#alerts-frontend` | [api-availability](#api-availability) |
+| `VaultEpochCloseStalled` / `VaultEpochCloseDelayed` | `critical` / `warning` | Page on-call | [epoch-close-stalled](#epoch-close-stalled) |
+| `VaultRedemptionQueueStalled` / `VaultRedemptionQueueBacklog` | `critical` / `warning` | Page on-call | [redemption-queue-stalled](#redemption-queue-stalled) |
+| `VaultApiAvailabilityBurn` / `VaultApiAvailabilitySlowBurn` | `critical` / `warning` | Page on-call | [api-availability](#api-availability) |
+| `VaultApiLatencyHigh` | `warning` | Page on-call | [api-latency](#api-latency) |
+| `VaultIndexerLagCritical` / `VaultIndexerLagWarning` | `critical` / `warning` | Page on-call | [indexer-lag](#indexer-lag) |
+| `VaultNavDriftCritical` / `VaultNavDriftWarning` | `critical` / `warning` | Page on-call | [nav-drift](#nav-drift) |
+
+Gone routes: the previous `#alerts-vault` and `#alerts-infra` Slack routes are
+retired — no alert definition in `docs/sentry-alerts.md` or the Prometheus rules
+above targets them. Vault and indexer alerts now page on-call directly; do not
+re-create those channels for routing.
+
 ## Runbooks
 
 ### epoch-close-stalled
