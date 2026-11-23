@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { use } from "react";
+import { notFound } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { AppHeader } from "../../../../components/AppHeader";
 import { WalletConnect } from "../../../../components/WalletConnect";
@@ -24,6 +25,7 @@ import {
   fetchMyDisclosureAcknowledgements,
   hashDisclosureText,
   VaultPolicyError,
+  VaultApiError,
   VAULT_DISCLOSURE_VERSION,
   type DepositState,
   type VaultAnalytics,
@@ -123,8 +125,18 @@ export default function VaultDetailPage({ params }: { params: Promise<{ id: stri
 
   useEffect(() => {
     fetchVaultDetail(id, token, { enabled: vaultsEnabled })
-      .then(v => { setVault(v); setLoading(false); })
-      .catch(e => { setError(e.message); setLoading(false); });
+      .then(v => {
+        // A missing vault (404 / null) renders the locale-aware not-found page.
+        if (!v) { notFound(); return; }
+        setVault(v);
+        setLoading(false);
+      })
+      .catch(e => {
+        // 404 → not-found page; 5xx and network failures keep the existing error UI.
+        if (e instanceof VaultApiError && e.status === 404) { notFound(); return; }
+        setError(e.message);
+        setLoading(false);
+      });
     fetchVaultAnalytics(id)
       .then(a => { setAnalytics(a); setAnalyticsError(null); })
       .catch(e => { setAnalytics(null); setAnalyticsError(e.message); });
