@@ -10,6 +10,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_BYTES = 64 * 1024;
+// Cap on reports processed per request (#429). A single Reporting API POST can
+// batch many violations; anything beyond this is silently dropped so one
+// request cannot flood logs/monitoring. Single-object payloads are unaffected.
+const MAX_REPORTS_PER_REQUEST = 20;
 // Browser extensions inject scripts into every page. Their violations are
 // noise, not attacks on us.
 const EXTENSION_SCHEMES = /^(chrome|moz|safari|safari-web)-extension:/;
@@ -37,7 +41,7 @@ export async function POST(req: Request): Promise<Response> {
     return new Response(null, { status: 400 });
   }
 
-  for (const v of normalizeReports(body)) {
+  for (const v of normalizeReports(body).slice(0, MAX_REPORTS_PER_REQUEST)) {
     if (EXTENSION_SCHEMES.test(v.blockedUri) || EXTENSION_SCHEMES.test(v.sourceFile ?? "")) continue;
     const summary = `csp-violation ${v.disposition || "?"} ${v.directive} blocked=${redact(v.blockedUri)} doc=${redact(v.documentUri)}`;
     console.warn(`[csp] ${summary}${v.sourceFile ? ` src=${redact(v.sourceFile)}:${v.line ?? "?"}` : ""}`);
