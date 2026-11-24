@@ -28,8 +28,11 @@ export function upstreamUrl(): string {
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const FORWARDED_REQUEST_HEADERS = ["content-type", "accept", "accept-language", "idempotency-key"];
-// content-length / content-encoding are deliberately not forwarded: fetch()
-// has already decoded the upstream body, so they would no longer be accurate.
+// Hop-by-hop headers that must never be forwarded verbatim to the upstream:
+// content-length may be wrong when the proxy rewrites the body, and
+// transfer-encoding is a transport-layer concern between two distinct TCP hops.
+// Both are explicitly stripped below after the allowlist copy.
+const HOP_BY_HOP_HEADERS = ["content-length", "transfer-encoding"];
 const FORWARDED_RESPONSE_HEADERS = ["content-type", "etag", "last-modified", "retry-after"];
 
 // ── Cookies ───────────────────────────────────────────────────────────────────
@@ -198,6 +201,8 @@ export async function proxy(req: Request, segments: string[]): Promise<Response>
     const value = req.headers.get(name);
     if (value) headers.set(name, value);
   }
+  // Explicitly remove hop-by-hop headers even if they somehow slipped through.
+  for (const name of HOP_BY_HOP_HEADERS) headers.delete(name);
   const attachToken = decision.auth !== "none" && !!ctx.session;
   if (attachToken) headers.set("authorization", `Bearer ${ctx.session!.t}`);
 

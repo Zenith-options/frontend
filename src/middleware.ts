@@ -16,7 +16,7 @@
 
 import createIntlMiddleware from "next-intl/middleware";
 import { NextResponse, type NextRequest } from "next/server";
-import { routing } from "./i18n/routing";
+import { routing, locales } from "./i18n/routing";
 import { generateNonce } from "./lib/security/csp";
 import { applySecurity } from "./lib/security/middleware";
 
@@ -25,6 +25,20 @@ const intl = createIntlMiddleware(routing);
 export function middleware(request: NextRequest) {
   const nonce = generateNonce();
   const isApi = request.nextUrl.pathname.startsWith("/api/");
+
+  // If the first path segment looks like a locale but is not in the supported
+  // set, return a 404 instead of silently rewriting to the default locale.
+  // This prevents a typo in a shared link (e.g. /xx/options) from rendering
+  // the English page under a wrong URL.
+  if (!isApi) {
+    const firstSegment = request.nextUrl.pathname.split("/")[1];
+    const looksLikeLocale = /^[a-z]{2}(-[A-Za-z]{2,4})?$/.test(firstSegment ?? "");
+    const isKnownLocale = (locales as readonly string[]).includes(firstSegment ?? "");
+    if (looksLikeLocale && !isKnownLocale) {
+      return applySecurity(request, new NextResponse(null, { status: 404 }), nonce);
+    }
+  }
+
   const response = isApi ? NextResponse.next() : intl(request);
   return applySecurity(request, response, nonce);
 }
