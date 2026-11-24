@@ -68,6 +68,14 @@ function errorCode(body: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
+/** Statuses that are worth retrying for a GET: the backend or a proxy in front of it hiccuped. */
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+
+/** Waits before the first and second retry. At most two retries, so a caller is never blocked long. */
+const RETRY_DELAYS_MS = [100, 300];
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 function assertPositive(value: number, name: string): void {
   if (!Number.isFinite(value) || value <= 0) {
     throw new VaultSdkError("validation", `${name} must be a positive finite number`);
@@ -83,10 +91,25 @@ export function createVaultClient(options: VaultClientOptions): VaultClient {
     if (body !== undefined) headers["content-type"] = "application/json";
     const token = await options.getToken?.();
     if (token) headers.authorization = `Bearer ${token}`;
-    try {
-      return await transport({ method, url: `${baseUrl}${path}`, headers, body });
-    } catch (cause) {
-      throw new VaultSdkError("transport", "Vault API request could not be completed", { cause });
+    // Only GETs are retried: the SDK cannot know whether a POST was applied, so a write is sent once.
+    // Each attempt is a fresh transport call, so a per-request timeout applies to every attempt separately.
+    const maxRetries = method === "GET" ? RETRY_DELAYS_MS.length : 0;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const res = await transport({ method, url: `${baseUrl}${path}`, headers, body });
+        if (attempt < maxRetries && RETRYABLE_STATUSES.has(res.status)) {
+          await sleep(RETRY_DELAYS_MS[attempt]);
+          continue;
+        }
+        return res;
+      } catch (cause) {
+        // A network error before any response is retried like a 5xx; 4xx responses never reach here.
+        if (attempt < maxRetries) {
+          await sleep(RETRY_DELAYS_MS[attempt]);
+          continue;
+        }
+        throw new VaultSdkError("transport", "Vault API request could not be completed", { cause });
+      }
     }
   }
 
