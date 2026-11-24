@@ -45,7 +45,7 @@ const serverEnvSchema = z.object({
 });
 
 const clientEnvSchema = z.object({
-  NEXT_PUBLIC_API_URL: z.string().url().optional(),
+  NEXT_PUBLIC_API_URL: z.string().min(1).url().optional(),
   NEXT_PUBLIC_STELLAR_NETWORK: z.enum(["testnet", "mainnet"]).optional(),
   NEXT_PUBLIC_STELLAR_TESTNET_CONTRACT_ID: contractId,
   NEXT_PUBLIC_STELLAR_MAINNET_CONTRACT_ID: contractId,
