@@ -67,3 +67,7 @@ Release images are built, scanned with Trivy for CVEs, and pushed to
 `ghcr.io/zenith-options/frontend` on every git tag by the
 `.github/workflows/docker.yml` CI job.  The SARIF scan results are
 uploaded to GitHub's Security tab for every push.
+
+### Optional: upstream runtime config
+
+By default `/api/runtime-config` returns the container's `NEXT_PUBLIC_*` environment. If `RUNTIME_CONFIG_UPSTREAM_URL` is set, the route fetches JSON from that URL and layers it over the environment. If the upstream answers with a non-JSON body (for example an HTML error page from a proxy), the route responds `502` with `{ "error": "upstream_invalid_response", "upstreamStatus": <status> }` and logs the upstream body server-side only.
