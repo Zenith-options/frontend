@@ -19,7 +19,7 @@
 // Shares are fixed at the initial capacity (1 share per quote unit), since the
 // simulation has no deposits or withdrawals.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { bs, selectStrike } from "../src/lib/pricing";
 
 export interface Snapshot {
@@ -159,7 +159,25 @@ function parseFlags(argv: string[]): Record<string, string> {
   return flags;
 }
 
-if (require.main === module) {
+/**
+ * Writes `data` to `path` atomically: it goes to `<path>.tmp` first and is
+ * renamed over `path` only once the write has fully succeeded. If anything
+ * fails, the temp file is removed and any existing file at `path` is left
+ * exactly as it was, so a failed run can never leave a truncated result that
+ * looks valid.
+ */
+export function writeFileAtomic(path: string, data: string): void {
+  const tmp = `${path}.tmp`;
+  try {
+    writeFileSync(tmp, data);
+    renameSync(tmp, path);
+  } catch (err) {
+    rmSync(tmp, { force: true });
+    throw err;
+  }
+}
+
+function main(): void {
   const flags = parseFlags(process.argv.slice(2));
   if (!flags.dataset) throw new Error("usage: vault-backtest --dataset <file> [--delta 0.25] [--epoch-steps 7] [--capacity 1000] [--fee-bps 1000] [--assignment rebuy|hold-cash] [--out <file>]");
   const dataset = JSON.parse(readFileSync(flags.dataset, "utf8")) as Dataset;
@@ -173,6 +191,17 @@ if (require.main === module) {
     assignment,
   });
   const json = JSON.stringify(result, null, 2) + "\n";
-  if (flags.out) writeFileSync(flags.out, json);
+  if (flags.out) writeFileAtomic(flags.out, json);
   else process.stdout.write(json);
+}
+
+if (require.main === module) {
+  try {
+    main();
+  } catch (err) {
+    // The output file is only written after the run completes, so on any
+    // failure the previous output (if any) is untouched.
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  }
 }
