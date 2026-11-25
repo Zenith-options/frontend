@@ -30,6 +30,12 @@ const str: Check<string> = (v, p) => {
   throw fail(p, "a string");
 };
 
+const nonEmptyStr: Check<string> = (v, p) => {
+  const s = str(v, p);
+  if (s.length === 0) throw fail(p, "a non-empty string");
+  return s;
+};
+
 const num: Check<number> = (v, p) => {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   throw fail(p, "a finite number");
@@ -114,6 +120,6 @@ export const parseVaultDetail = obj<VaultDetail>({
 
 export const parseVaultSummaries = arr(parseVaultSummary);
 
-export const parseDepositResult = obj<DepositResult>({ tx_id: str });
+export const parseDepositResult = obj<DepositResult>({ tx_id: nonEmptyStr });
 
-export const parseWithdrawResult = obj<WithdrawResult>({ tx_id: str, queued: bool });
+export const parseWithdrawResult = obj<WithdrawResult>({ tx_id: nonEmptyStr, queued: bool });

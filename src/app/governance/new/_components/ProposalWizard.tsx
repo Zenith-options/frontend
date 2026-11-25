@@ -20,6 +20,9 @@ import {
   loadDraft,
   saveDraft,
   validateDraft,
+  BODY_MIN,
+  SUMMARY_MAX,
+  TITLE_MIN,
   type ProposalDraft,
 } from "../../../../lib/governance/draft";
 import type { SimulationResult, ValueReader } from "../../../../lib/governance/simulation";
@@ -100,9 +103,10 @@ export function ProposalWizard({
   // have *loaded* — errors are shown there, so the user must be able to reach
   // it.  Leaving step 3 is what actually requires a clean simulation.
   const metaOk =
-    draft.title.trim().length >= 8 &&
-    draft.body.trim().length >= 40 &&
-    draft.summary.trim().length <= 280;
+    draft.title.trim().length >= TITLE_MIN &&
+    draft.summary.trim().length >= 1 &&
+    draft.summary.trim().length <= SUMMARY_MAX &&
+    draft.body.trim().length >= BODY_MIN;
   const actionsOk = draft.actions.length > 0;
   const simLoaded = simulation !== null;
   const simOk = isSimulationReady(simulation, maxActions);
@@ -111,7 +115,7 @@ export function ProposalWizard({
 
   const blockedHint =
     step === 0
-      ? "Add a title and a description to continue"
+      ? "Add a title, summary, and a description to continue"
       : step === 1
         ? "Add at least one action to continue"
         : simLoaded

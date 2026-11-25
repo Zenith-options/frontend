@@ -23,7 +23,9 @@ export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: 
   const token = useWalletStore((s) => s.token);
   const { account, open: openBackendPosition } = useBackendData();
   const balance = account?.balance ?? 0;
-  const qty = Math.max(0.01, parseFloat(contracts) || 1);
+  const rawQty = parseFloat(contracts);
+  const qty = Number.isFinite(rawQty) && rawQty > 0 ? rawQty : 0;
+  const invalidQty = qty <= 0;
   const tradeGreeks = trade ? (trade.side === "call" ? trade.row.call : trade.row.put) : null;
   const collateral =
     trade && trade.mode === "write"
@@ -45,7 +47,7 @@ export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: 
   const integrityBlocked = isTradingBlocked(sym);
 
   const execTrade = async () => {
-    if (!trade || !tradeGreeks || insufficientFunds || submitting || integrityBlocked) return;
+    if (!trade || !tradeGreeks || invalidQty || insufficientFunds || submitting || integrityBlocked) return;
     setSubmitting(true);
     setTradeError(null);
     try {
@@ -78,6 +80,8 @@ export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: 
     collateral,
     insufficientFunds,
     notSignedIn,
+    /** True when quantity is zero or negative — a no-op trade. */
+    invalidQty,
     /** True when the integrity guard has flagged this symbol as suspect. */
     integrityBlocked,
     execTrade,

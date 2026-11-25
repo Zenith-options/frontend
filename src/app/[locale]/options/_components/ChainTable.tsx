@@ -10,6 +10,12 @@ interface Props{chain:ChainRow[];chainLoading:boolean;setTrade:(t:TradeState)=>v
 // Each strike row is memoized: only re-renders when its own `row` object
 // identity changes (the chain hook uses mergeChain structural-sharing so
 // unchanged strikes keep their object identity across repaints).
+const DASH = "—";
+
+function fmtNullable(v: number | undefined | null): string {
+  return v == null || !Number.isFinite(v) ? DASH : fmtN(v);
+}
+
 interface RowProps {
   row: ChainRow;
   isAtm: boolean;
@@ -17,7 +23,10 @@ interface RowProps {
 }
 
 const ChainRowMemo = memo(function ChainRowMemo({ row, isAtm, setTrade }: RowProps) {
-  const sp = Math.max(0.00001, row.call.premium * 0.003);
+  const callPremium = row.call.premium ?? null;
+  const putPremium = row.put.premium ?? null;
+  const sp = callPremium != null ? Math.max(0.00001, callPremium * 0.003) : 0;
+  const pSp = putPremium != null ? Math.max(0.00001, putPremium * 0.003) : 0;
   const vol = Math.round(seededRandom(row.strike * 1000) * 200 + 20);
   const oi = Math.round(seededRandom(row.strike * 1000 + 7) * 5000 + 100);
   return (
@@ -33,34 +42,34 @@ const ChainRowMemo = memo(function ChainRowMemo({ row, isAtm, setTrade }: RowPro
         title="Click to write (sell)"
         onClick={() => setTrade({ row, side: "call", mode: "write" })}
       >
-        {fmtN(Math.max(0, row.call.premium - sp))}
+        {callPremium != null ? fmtNullable(Math.max(0, callPremium - sp)) : DASH}
       </div>
       <div
         className="cc tradeable call"
         title="Click to buy"
         onClick={() => setTrade({ row, side: "call", mode: "buy" })}
       >
-        {fmtN(row.call.premium + sp)}
+        {callPremium != null ? fmtNullable(callPremium + sp) : DASH}
       </div>
-      <div className="cc brand">{(row.call.iv * 100).toFixed(1)}</div>
+      <div className="cc brand">{row.call.iv != null ? (row.call.iv * 100).toFixed(1) : DASH}</div>
       <div className={`strike-cell${isAtm ? " atm" : ""}`}>
         {fmtK(row.strike)}
         {isAtm && <div style={{ fontSize: 7, marginTop: 1, opacity: 0.6 }}>ATM</div>}
       </div>
-      <div className="cc brand">{(row.put.iv * 100).toFixed(1)}</div>
+      <div className="cc brand">{row.put.iv != null ? (row.put.iv * 100).toFixed(1) : DASH}</div>
       <div
         className="cc tradeable put"
         title="Click to buy"
         onClick={() => setTrade({ row, side: "put", mode: "buy" })}
       >
-        {fmtN(row.put.premium + sp)}
+        {putPremium != null ? fmtNullable(putPremium + pSp) : DASH}
       </div>
       <div
         className="cc tradeable put"
         title="Click to write (sell)"
         onClick={() => setTrade({ row, side: "put", mode: "write" })}
       >
-        {fmtN(Math.max(0, row.put.premium - sp))}
+        {putPremium != null ? fmtNullable(Math.max(0, putPremium - pSp)) : DASH}
       </div>
       <div className="cc">{oi.toLocaleString()}</div>
       <div className="cc">{vol}</div>
