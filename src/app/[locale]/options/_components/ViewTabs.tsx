@@ -15,7 +15,7 @@ function ViewTabsImpl({viewTab,setViewTab,sym,expiryLabel,strikes}:Props){
   return(
           <div style={{display:"flex",borderBottom:"1px solid var(--border-default)",padding:"0 8px",background:"var(--bg-raised)"}}>
             {(["chain","positions","strategies","surface"] as const).map(tab=>(
-              <button key={tab} onClick={()=>setViewTab(tab)} style={{
+              <button key={tab} onClick={()=>setViewTab(tab)} className="focus-ring" style={{
                 padding:"8px 14px",border:"none",background:"transparent",cursor:"pointer",
                 fontSize:12,fontWeight:500,textTransform:"capitalize",
                 color:viewTab===tab?"var(--text-hi)":"var(--text-lo)",

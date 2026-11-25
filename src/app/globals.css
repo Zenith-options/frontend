@@ -184,6 +184,17 @@ html[data-motion="reduce"] *::after {
   --color-brand:       #b59665;
 }
 
+/*
+ * Shared keyboard focus ring. Applied as `className="focus-ring"` on
+ * interactive elements; only shows for keyboard focus (:focus-visible) and
+ * uses the brand token so it stays visible on raised and base surfaces.
+ */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 html,
 body {
   background: var(--color-surface-base);
