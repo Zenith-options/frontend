@@ -269,5 +269,13 @@
       "DISCLOSURE_VERSION_STALE": "The risk disclosure has been updated. Review and accept the new version to continue.",
       "JURISDICTION_NOT_ELIGIBLE": "Vault deposits are not available for the jurisdiction you declared. If you believe this is an error, contact support."
     }
+  },
+  "tradeTicket": {
+    "errors": {
+      "wallet_rejected": "You rejected the transaction in your wallet.",
+      "validation_failed": "Invalid request. Check your inputs and try again.",
+      "network_error": "Network error. Check your connection and try again.",
+      "backend_error": "Backend error. Try again shortly."
+    }
   }
 }

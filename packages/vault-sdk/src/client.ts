@@ -51,15 +51,63 @@ function parseJson(text: string): unknown {
   }
 }
 
+/**
+ * Parse Retry-After header (RFC 7231 section 7.1.3).
+ * Returns the delay in milliseconds, or null if the header is absent or unparseable.
+ * Capped at 30 seconds.
+ */
+function parseRetryAfter(header: string | null): number | null {
+  if (!header) return null;
+  
+  const header_trimmed = header.trim();
+  
+  // Try parsing as delay-seconds (non-negative integer)
+  const seconds = parseInt(header_trimmed, 10);
+  if (!isNaN(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1000, 30_000);
+  }
+  
+  // Try parsing as HTTP-date (RFC 7231 section 7.1.1)
+  const date = new Date(header_trimmed);
+  if (!isNaN(date.getTime())) {
+    const delayMs = date.getTime() - Date.now();
+    if (delayMs > 0) {
+      return Math.min(delayMs, 30_000);
+    }
+  }
+  
+  return null;
+}
+
 const defaultTransport: VaultTransport = async ({ method, url, headers, body }) => {
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-    credentials: "same-origin",
-  });
-  const text = await res.text();
-  return { status: res.status, body: text ? parseJson(text) : undefined };
+  let attempt = 0;
+  const maxAttempts = 3;
+  
+  while (attempt < maxAttempts) {
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      credentials: "same-origin",
+    });
+    const text = await res.text();
+    
+    // Handle 429 with Retry-After
+    if (res.status === 429 && attempt < maxAttempts - 1) {
+      const retryAfterHeader = res.headers.get("Retry-After");
+      const delayMs = parseRetryAfter(retryAfterHeader);
+      if (delayMs !== null && delayMs > 0) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        attempt++;
+        continue;
+      }
+    }
+    
+    return { status: res.status, body: text ? parseJson(text) : undefined };
+  }
+  
+  // Should not reach here, but return 429 as fallback
+  return { status: 429, body: undefined };
 };
 
 function errorCode(body: unknown): string | undefined {

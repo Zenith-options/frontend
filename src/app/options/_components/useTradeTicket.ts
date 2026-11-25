@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { ApiError } from "../../../lib/api/client";
 import { useBackendData } from "../../../lib/context/BackendDataContext";
 import { useWalletStore } from "../../../lib/store/wallet";
@@ -17,6 +18,7 @@ interface Args {
 
 // Validation, collateral and funds checks + submit for the single-leg ticket.
 export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: Args) {
+  const t = useTranslations();
   const [showTradeConfirm, setShowTradeConfirm] = useState(false);
   const [tradeError, setTradeError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -44,6 +46,37 @@ export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: 
   const isTradingBlocked = useIntegrityStore((s) => s.isTradingBlocked);
   const integrityBlocked = isTradingBlocked(sym);
 
+  // Classify error and return i18n key
+  function classifyTradeError(err: unknown): string {
+    if (err instanceof ApiError) {
+      // Wallet rejection (user cancelled)
+      if (/user (declined|rejected|denied)|declined access|rejected|denied|cancel/i.test(err.message)) {
+        return t("tradeTicket.errors.wallet_rejected");
+      }
+      // Backend validation errors (4xx)
+      if (err.status >= 400 && err.status < 500) {
+        return t("tradeTicket.errors.validation_failed");
+      }
+      // Network/retryable errors (5xx) or circuit open/timeout
+      if (err.status >= 500 || err.reason === "circuit_open" || err.reason === "timeout") {
+        return t("tradeTicket.errors.network_error");
+      }
+      // Fallback to backend error
+      return t("tradeTicket.errors.backend_error");
+    }
+    // Network/fetch errors
+    if (err instanceof TypeError) {
+      return t("tradeTicket.errors.network_error");
+    }
+    // Wallet-related errors
+    const msg = typeof err === "string" ? err : err instanceof Error ? err.message : (err as { message?: string })?.message;
+    if (typeof msg === "string" && /user (declined|rejected|denied)|declined access|rejected|denied|cancel/i.test(msg)) {
+      return t("tradeTicket.errors.wallet_rejected");
+    }
+    // Generic backend error fallback
+    return t("tradeTicket.errors.backend_error");
+  }
+
   const execTrade = async () => {
     if (!trade || !tradeGreeks || insufficientFunds || submitting || integrityBlocked) return;
     setSubmitting(true);
@@ -60,7 +93,7 @@ export function useTradeTicket({ trade, sym, expiry, spot, contracts, onDone }: 
       setShowTradeConfirm(false);
       onDone();
     } catch (err) {
-      setTradeError(err instanceof ApiError ? err.message : "Failed to open position");
+      setTradeError(classifyTradeError(err));
     } finally {
       setSubmitting(false);
     }

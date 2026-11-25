@@ -186,5 +186,13 @@
       "capacityChanged": "O cofre encheu enquanto seu depósito estava em andamento, então ele não foi aceito. Reduza o valor ou entre na lista de espera.",
       "submitFailed": "O depósito não foi enviado. Tente novamente."
     }
+  },
+  "tradeTicket": {
+    "errors": {
+      "wallet_rejected": "Você rejeitou a transação na sua carteira.",
+      "validation_failed": "Requisição inválida. Verifique seus dados e tente novamente.",
+      "network_error": "Erro de rede. Verifique sua conexão e tente novamente.",
+      "backend_error": "Erro no servidor. Tente mais tarde."
+    }
   }
 }

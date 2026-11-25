@@ -186,5 +186,13 @@
       "capacityChanged": "La bóveda se llenó mientras tu depósito estaba en curso, así que no fue aceptado. Reduce el importe o únete a la lista de espera.",
       "submitFailed": "El depósito no se envió. Inténtalo de nuevo."
     }
+  },
+  "tradeTicket": {
+    "errors": {
+      "wallet_rejected": "Rechazaste la transacción en tu billetera.",
+      "validation_failed": "Solicitud inválida. Revisa tus datos e inténtalo de nuevo.",
+      "network_error": "Error de red. Verifica tu conexión e inténtalo de nuevo.",
+      "backend_error": "Error en el servidor. Inténtalo más tarde."
+    }
   }
 }

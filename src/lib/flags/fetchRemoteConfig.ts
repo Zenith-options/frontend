@@ -3,7 +3,7 @@
  * Called from the layout server component and the /api/flags route.
  *
  * Falls back to null (safe defaults) if the remote endpoint is
- * unreachable, returns an invalid response, or times out.
+ * unreachable or times out. Throws if the response body is not valid JSON.
  *
  * Remote endpoint contract:
  *   GET <NEXT_PUBLIC_FLAGS_URL>  (defaults to /api/flags/config.json)
@@ -47,7 +47,10 @@ export async function fetchRemoteConfig(): Promise<RemoteFlagConfig | null> {
 
     if (!res.ok) return null;
 
-    const data = await res.json();
+    const text = await res.text();
+    
+    // Throws if not valid JSON
+    const data = JSON.parse(text);
 
     // Validate shape minimally — unknown keys are just ignored
     if (data && typeof data === "object" && typeof data.flags === "object") {
@@ -55,8 +58,13 @@ export async function fetchRemoteConfig(): Promise<RemoteFlagConfig | null> {
     }
 
     return null;
-  } catch {
-    // Timeout, network error, parse error — safe fallback
+  } catch (err) {
+    // Network error or timeout — return null (safe fallback)
+    // JSON.parse errors will propagate to the caller (flags route)
+    if (err instanceof SyntaxError) {
+      throw err;  // Let the route handle non-JSON
+    }
+    // Network/timeout errors
     return null;
   }
 }

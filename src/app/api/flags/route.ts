@@ -15,12 +15,20 @@ import { fetchRemoteConfig } from "../../../lib/flags/fetchRemoteConfig";
 export const revalidate = 60;
 
 export async function GET() {
-  const config = await fetchRemoteConfig();
+  try {
+    const config = await fetchRemoteConfig();
 
-  // Always return a valid shape — empty flags = all flags use defaults
-  const body = config ?? { flags: {} };
+    // Always return a valid shape — empty flags = all flags use defaults
+    const body = config ?? { flags: {} };
 
-  return NextResponse.json(body, {
-    headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" },
-  });
+    return NextResponse.json(body, {
+      headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" },
+    });
+  } catch (err) {
+    // fetchRemoteConfig throws when the body is not valid JSON
+    return NextResponse.json(
+      { error: "upstream returned non-JSON body" },
+      { status: 502 }
+    );
+  }
 }
