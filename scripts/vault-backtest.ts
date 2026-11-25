@@ -173,6 +173,14 @@ if (require.main === module) {
     assignment,
   });
   const json = JSON.stringify(result, null, 2) + "\n";
-  if (flags.out) writeFileSync(flags.out, json);
-  else process.stdout.write(json);
+  if (flags.out) {
+    try {
+      writeFileSync(flags.out, json);
+    } catch (err) {
+      process.stderr.write(`vault-backtest: failed to write output file "${flags.out}": ${(err as Error).message}\n`);
+      process.exit(1);
+    }
+  } else {
+    process.stdout.write(json);
+  }
 }
