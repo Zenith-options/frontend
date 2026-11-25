@@ -37,7 +37,12 @@ export async function POST(req: Request): Promise<Response> {
     return new Response(null, { status: 400 });
   }
 
-  for (const v of normalizeReports(body)) {
+  const reports = normalizeReports(body);
+  if (reports.length === 0) {
+    console.warn("[csp] received report that did not match any known schema:", JSON.stringify(body).slice(0, 512));
+    return new Response(null, { status: 204 });
+  }
+  for (const v of reports) {
     if (EXTENSION_SCHEMES.test(v.blockedUri) || EXTENSION_SCHEMES.test(v.sourceFile ?? "")) continue;
     const summary = `csp-violation ${v.disposition || "?"} ${v.directive} blocked=${redact(v.blockedUri)} doc=${redact(v.documentUri)}`;
     console.warn(`[csp] ${summary}${v.sourceFile ? ` src=${redact(v.sourceFile)}:${v.line ?? "?"}` : ""}`);
