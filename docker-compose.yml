@@ -113,6 +113,42 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # Scheduled logical backups of the vault DB (issue #238). Each dump is
+  # checked with `pg_restore --list`; a truncated or corrupt dump is kept
+  # as `.failed` and never counted as a good backup. Restore steps and the
+  # replay-from-checkpoint path are in docs/vault-backup-restore.md.
+  # shortcut: pg_dump gives snapshot-interval RPO only; switch to WAL
+  # archiving (PITR) in the managed DB before the `vaults` flag goes live.
+  db-backup:
+    profiles: ["full"]
+    image: ${ZENITH_DB_IMAGE:-postgres:16-alpine}
+    environment:
+      PGHOST: db
+      PGUSER: ${ZENITH_DB_USER:-zenith}
+      PGPASSWORD: ${ZENITH_DB_PASSWORD:-zenith}
+      PGDATABASE: ${ZENITH_DB_NAME:-zenith}
+      BACKUP_INTERVAL_SECS: ${BACKUP_INTERVAL_SECS:-3600}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          f=/backups/zenith-$$(date -u +%Y%m%dT%H%M%SZ)
+          if pg_dump -Fc -f "$$f.tmp" && pg_restore --list "$$f.tmp" >/dev/null; then
+            mv "$$f.tmp" "$$f.dump" && echo "backup ok: $$f.dump"
+          else
+            mv "$$f.tmp" "$$f.failed" 2>/dev/null; echo "backup FAILED: $$f" >&2
+          fi
+          find /backups -name 'zenith-*' -mtime +$$BACKUP_RETENTION_DAYS -delete
+          sleep "$$BACKUP_INTERVAL_SECS"
+        done
+    volumes:
+      - zenith-db-backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
   backend:
     profiles: ["full"]
     image: ${ZENITH_BACKEND_IMAGE:-ghcr.io/zenith-options/backend:latest}
@@ -289,5 +325,6 @@ networks:
 
 volumes:
   zenith-db-data:
+  zenith-db-backups:
   fork-snapshots:
   fork-reports:
