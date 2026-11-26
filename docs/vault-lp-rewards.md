@@ -16,5 +16,9 @@ The contract stores `claimed[depositor]` (cumulative). A claim pays `cumulative_
 ## Funding & recovery
 The operator transfers each epoch's budget to the distributor before publishing its root. Root publication refuses to overwrite an epoch that is already funded. Funds unclaimed after N epochs are recoverable by the admin only to the treasury, and every recovery emits an event.
 
+## Tree-size cap
+
+Each epoch's leaf set is capped at 65 536 entries to bound the cost of Merkle tree generation. If the depositor count exceeds the cap, the generation job splits the allocation into shards keyed by `sha256(depositor)[0] % num_shards`; each shard gets its own root and an on-chain pointer in the distributor maps `(epoch, shard_id) -> root`. The claim UI resolves which shard to query from the depositor address before constructing the proof.
+
 ## Open work
 Distributor contract under `contracts/`, generation job (backend repo), `src/lib/api/rewards.ts`, claim UI on `/vaults`, and tests.
