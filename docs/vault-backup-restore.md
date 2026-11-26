@@ -21,5 +21,9 @@ Restore one with:
 4. Check invariants: total shares match the chain; queue entries reconcile with on-chain requests; the epoch ledger is contiguous.
 5. Restore is done only when all invariants pass. Otherwise wipe the projection and replay from genesis or the earliest trusted checkpoint.
 
+## Corrupt-backup detection
+
+The `db-backup` service runs `pg_restore --list` on every dump immediately after writing it. A dump whose `pg_restore --list` exits non-zero is renamed to `<timestamp>.failed.dump` and an error is logged; the restore runbook must never select a `.failed` file. The nightly reconciliation job (`scripts/vault-reconcile.sh`) re-runs the invariant checks defined in step 4 above.
+
 ## Open work
 Backup jobs, the drill script in `scripts/` and the drill test. The service code lives in the backend repo.
