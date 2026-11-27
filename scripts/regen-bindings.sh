@@ -14,6 +14,50 @@
 
 set -euo pipefail
 
+usage() {
+  cat >&2 <<EOF
+Usage: NETWORK=<network> bash scripts/regen-bindings.sh [--help]
+
+Regenerates TypeScript bindings for Zenith's Soroban contracts using the
+stellar CLI.
+
+Environment variables:
+  NETWORK  (required) Target Stellar network. Must be "testnet" or "mainnet".
+           Defaults to "testnet" when not set.
+
+The script also reads the following env vars for contract IDs (replace
+<NETWORK> with the uppercased value of NETWORK):
+  NEXT_PUBLIC_CONTRACT_MARKET_<NETWORK>
+  NEXT_PUBLIC_CONTRACT_VAULT_<NETWORK>
+  NEXT_PUBLIC_CONTRACT_ORACLE_<NETWORK>
+
+Contracts whose env var is unset are skipped — they are not an error.
+
+Prerequisites:
+  stellar CLI — https://github.com/stellar/stellar-cli
+
+Examples:
+  NETWORK=testnet bash scripts/regen-bindings.sh
+  NETWORK=mainnet \\
+    NEXT_PUBLIC_CONTRACT_VAULT_MAINNET=C... \\
+    bash scripts/regen-bindings.sh
+EOF
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Error: unknown argument '$arg'" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
 NETWORK="${NETWORK:-testnet}"
 OUT_DIR="src/lib/soroban/contracts"
 
