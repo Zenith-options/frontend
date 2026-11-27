@@ -113,9 +113,21 @@ function parseEnv(input) {
   const result = envSchema.safeParse(input);
   if (!result.success) {
     const details = result.error.issues
-      .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
-      .join("\n  ");
-    throw new Error(`Invalid environment configuration:\n  ${details}`);
+      .map((issue) => {
+        const name = issue.path.join(".");
+        return `  ${name}: ${issue.message}`;
+      })
+      .join("\n");
+    throw new Error(
+      [
+        "Invalid environment configuration. The following variables are missing or invalid:",
+        "",
+        details,
+        "",
+        "Copy .env.local.example to .env.local and fill in the required values:",
+        "  cp .env.local.example .env.local",
+      ].join("\n"),
+    );
   }
   return result.data;
 }

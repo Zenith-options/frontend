@@ -446,7 +446,11 @@ function parseRpcUrls(raw: string | undefined, fallback: string): string[] {
 
 if (isProduction && (parsed.SOROBAN_RPC_URLS === undefined || parsed.SOROBAN_RPC_URLS.trim() === "")) {
   throw new Error(
-    "SOROBAN_RPC_URLS is required in production: configure a comma-separated list of Soroban RPC endpoints",
+    [
+      "Missing required environment variable: SOROBAN_RPC_URLS",
+      "SOROBAN_RPC_URLS must be set to a comma-separated list of Soroban RPC endpoints in production.",
+      "Copy .env.local.example to .env.local and set SOROBAN_RPC_URLS.",
+    ].join("\n"),
   );
 }
 
