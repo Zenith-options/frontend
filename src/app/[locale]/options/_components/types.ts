@@ -1,6 +1,6 @@
 import type { Greeks, MARKETS, EXPIRIES } from "../../../../lib/pricing";
 
-export interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;}
+export interface ChainRow{strike:number;call:Greeks;put:Greeks;itmCall:boolean;itmPut:boolean;bid?:number;ask?:number;}
 export interface TradeState{row:ChainRow;side:"call"|"put";mode:"buy"|"write";}
 export type Market=(typeof MARKETS)[number];
 export type Expiry=(typeof EXPIRIES)[number];

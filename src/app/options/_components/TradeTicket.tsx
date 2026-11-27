@@ -23,13 +23,13 @@ export function TradeTicket({
   const {
     showTradeConfirm, setShowTradeConfirm, tradeError, setTradeError,
     submitting, balance, qty, tradeGreeks, collateral,
-    insufficientFunds, notSignedIn, integrityBlocked, execTrade,
+    insufficientFunds, notSignedIn, integrityBlocked, invalidQuantity, execTrade,
   } = useTradeTicket({ trade, sym, expiry, spot, contracts, onDone: onExecuted });
 
   if (!trade || !tradeGreeks) return null;
 
   // Any condition that disables the action button.
-  const actionDisabled = insufficientFunds || notSignedIn || integrityBlocked;
+  const actionDisabled = invalidQuantity || insufficientFunds || notSignedIn || integrityBlocked;
 
   return (
     <>
@@ -203,6 +203,14 @@ export function TradeTicket({
                 }}>{v}</span>
               </div>
             ))}
+            {invalidQuantity && (
+              <div style={{
+                marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--border-default)",
+                fontSize: 11, color: "var(--put)",
+              }}>
+                Quantity must be greater than 0.
+              </div>
+            )}
             {insufficientFunds && (
               <div style={{
                 marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--border-default)",
@@ -285,9 +293,11 @@ export function TradeTicket({
         disabledReason={
           integrityBlocked
             ? "Trading is disabled — market data integrity check failed. Please wait for the feed to recover."
-            : tradeError ?? (insufficientFunds
-              ? `Insufficient balance ${trade.mode === "write" ? "to post collateral" : "to cover premium"}.`
-              : undefined)
+            : tradeError ?? (invalidQuantity
+              ? "Quantity must be greater than 0."
+              : insufficientFunds
+                ? `Insufficient balance ${trade.mode === "write" ? "to post collateral" : "to cover premium"}.`
+                : undefined)
         }
       >
         {[

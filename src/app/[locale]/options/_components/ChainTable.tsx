@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import { useTranslations } from "next-intl";
 import { seededRandom, fmtN, fmtK } from "../../../../lib/pricing";
 import type { ChainRow, TradeState } from "./types";
 
@@ -13,13 +14,28 @@ interface Props{chain:ChainRow[];chainLoading:boolean;setTrade:(t:TradeState)=>v
 interface RowProps {
   row: ChainRow;
   isAtm: boolean;
+  noQuote: string;
   setTrade: (t: TradeState) => void;
 }
 
-const ChainRowMemo = memo(function ChainRowMemo({ row, isAtm, setTrade }: RowProps) {
+const ChainRowMemo = memo(function ChainRowMemo({ row, isAtm, noQuote, setTrade }: RowProps) {
   const sp = Math.max(0.00001, row.call.premium * 0.003);
   const vol = Math.round(seededRandom(row.strike * 1000) * 200 + 20);
   const oi = Math.round(seededRandom(row.strike * 1000 + 7) * 5000 + 100);
+
+  const callBid = Number.isFinite(row.call.premium) && row.call.premium > 0
+    ? fmtN(Math.max(0, row.call.premium - sp))
+    : noQuote;
+  const callAsk = Number.isFinite(row.call.premium) && row.call.premium > 0
+    ? fmtN(row.call.premium + sp)
+    : noQuote;
+  const putAsk = Number.isFinite(row.put.premium) && row.put.premium > 0
+    ? fmtN(row.put.premium + sp)
+    : noQuote;
+  const putBid = Number.isFinite(row.put.premium) && row.put.premium > 0
+    ? fmtN(Math.max(0, row.put.premium - sp))
+    : noQuote;
+
   return (
     <div
       key={row.strike}
@@ -33,14 +49,14 @@ const ChainRowMemo = memo(function ChainRowMemo({ row, isAtm, setTrade }: RowPro
         title="Click to write (sell)"
         onClick={() => setTrade({ row, side: "call", mode: "write" })}
       >
-        {fmtN(Math.max(0, row.call.premium - sp))}
+        {callBid}
       </div>
       <div
         className="cc tradeable call"
         title="Click to buy"
         onClick={() => setTrade({ row, side: "call", mode: "buy" })}
       >
-        {fmtN(row.call.premium + sp)}
+        {callAsk}
       </div>
       <div className="cc brand">{(row.call.iv * 100).toFixed(1)}</div>
       <div className={`strike-cell${isAtm ? " atm" : ""}`}>
@@ -53,14 +69,14 @@ const ChainRowMemo = memo(function ChainRowMemo({ row, isAtm, setTrade }: RowPro
         title="Click to buy"
         onClick={() => setTrade({ row, side: "put", mode: "buy" })}
       >
-        {fmtN(row.put.premium + sp)}
+        {putAsk}
       </div>
       <div
         className="cc tradeable put"
         title="Click to write (sell)"
         onClick={() => setTrade({ row, side: "put", mode: "write" })}
       >
-        {fmtN(Math.max(0, row.put.premium - sp))}
+        {putBid}
       </div>
       <div className="cc">{oi.toLocaleString()}</div>
       <div className="cc">{vol}</div>
@@ -69,10 +85,12 @@ const ChainRowMemo = memo(function ChainRowMemo({ row, isAtm, setTrade }: RowPro
 },
 // Custom comparator: skip re-render when row identity and ATM flag are unchanged.
 // setTrade is stable (useCallback in the parent) so comparing it is optional but safe.
-(prev, next) => prev.row === next.row && prev.isAtm === next.isAtm && prev.setTrade === next.setTrade);
+(prev, next) => prev.row === next.row && prev.isAtm === next.isAtm && prev.setTrade === next.setTrade && prev.noQuote === next.noQuote);
 
 // ─── Table ─────────────────────────────────────────────────────────────────────
 function ChainTableImpl({ chain, chainLoading, setTrade }: Props) {
+  const t = useTranslations("chain");
+  const noQuote = t("noQuote");
   const atmIdx = chain.findIndex((r) => !r.itmCall);
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
@@ -111,6 +129,7 @@ function ChainTableImpl({ chain, chainLoading, setTrade }: Props) {
               key={row.strike}
               row={row}
               isAtm={i === atmIdx}
+              noQuote={noQuote}
               setTrade={setTrade}
             />
           ))}
