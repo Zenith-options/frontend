@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { ApiError } from "../../../../lib/api/client";
 import { useBackendData } from "../../../../lib/context/BackendDataContext";
 import { useWalletStore } from "../../../../lib/store/wallet";
@@ -16,6 +16,14 @@ export function useStrategyPreview({sym,expiryDays,spot,marketVol,qty,onExecuted
   const [showStrategyConfirm,setShowStrategyConfirm]=useState(false);
   const [tradeError,setTradeError]=useState<string|null>(null);
   const [submitting,setSubmitting]=useState(false);
+
+  // Clear the preview immediately when the market changes so stale data from
+  // the previous market is never visible while the new fetch is in flight.
+  useEffect(()=>{
+    setSelectedStrategy(null);
+    setShowStrategyConfirm(false);
+    setTradeError(null);
+  },[sym]);
   const token=useWalletStore(s=>s.session);
   const {account,openStrategy:openBackendStrategy}=useBackendData();
   const balance=account?.balance ?? 0;

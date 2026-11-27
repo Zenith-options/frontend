@@ -416,6 +416,21 @@ export default function VaultDetailPage({ params }: { params: Promise<{ id: stri
                   <div style={{ fontSize: 12, color: "var(--text-mid)", lineHeight: 1.7 }}>{vault.payoffExplanation}</div>
                 </div>
 
+                {/* Active strategies — field is optional per the API schema */}
+                {(vault as unknown as { strategies?: { name: string; description: string }[] }).strategies?.length ? (
+                  <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-raised)", padding: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-hi)", marginBottom: 10 }}>Active Strategies</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {(vault as unknown as { strategies: { name: string; description: string }[] }).strategies.map((s, i) => (
+                        <div key={i} style={{ padding: "8px 12px", background: "var(--bg-overlay)", border: "1px solid var(--border-subtle)" }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-hi)", marginBottom: 2 }}>{s.name}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-mid)", lineHeight: 1.5 }}>{s.description}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 {/* Historical epochs */}
                 <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-raised)" }}>
                   <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border-default)", fontSize: 11, fontWeight: 600, color: "var(--text-hi)" }}>

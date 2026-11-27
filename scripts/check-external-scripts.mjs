@@ -45,6 +45,8 @@ const ALLOWED_ORIGINS = (values["allow-origins"] || "").split(",").filter(Boolea
 const EXTERNAL_SCRIPT_RE = /<script[^>]+src=["'](https?:\/\/[^"']+)["'][^>]*>/gi;
 const EXTERNAL_LINK_RE = /<link[^>]+href=["'](https?:\/\/[^"']+)["'][^>]*>/gi;
 const INTEGRITY_RE = /\bintegrity=["'][^"']+["']/i;
+// Matches any <script ...> tag that has no src attribute (inline or bare)
+const INLINE_SCRIPT_RE = /<script(?![^>]*\bsrc=)[^>]*>/gi;
 
 /** Recursively find all .html files under dir */
 function findHtml(dir) {
@@ -104,6 +106,21 @@ for (const file of files) {
 
   checkMatches(EXTERNAL_SCRIPT_RE, "script");
   checkMatches(EXTERNAL_LINK_RE, "link");
+
+  // Check for inline <script> tags that lack an integrity attribute.
+  // The SRI policy requires all script elements to carry integrity=, even
+  // inline ones, so a bare <script> without it is a policy violation.
+  let inlineMatch;
+  INLINE_SCRIPT_RE.lastIndex = 0;
+  while ((inlineMatch = INLINE_SCRIPT_RE.exec(html)) !== null) {
+    const fullTag = inlineMatch[0];
+    if (!INTEGRITY_RE.test(fullTag)) {
+      console.error(`  ✗ [inline-script] Inline <script> tag missing integrity attribute`);
+      console.error(`    File: ${relative}`);
+      console.error(`    Tag:  ${fullTag.slice(0, 120)}…\n`);
+      violations++;
+    }
+  }
 }
 
 if (violations === 0) {
