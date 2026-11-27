@@ -57,7 +57,7 @@ export async function POST(req: Request) {
   try {
     body = await req.json();
   } catch {
-    return json({ error: "Body must be JSON" }, 400);
+    return json({ error: "invalid_json" }, 400);
   }
   const privacy = parsePrivacy(body.privacy);
   const now = new Date();

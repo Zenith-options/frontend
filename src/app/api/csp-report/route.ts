@@ -37,11 +37,23 @@ export async function POST(req: Request): Promise<Response> {
     return new Response(null, { status: 400 });
   }
 
-  for (const v of normalizeReports(body)) {
+  const violations = normalizeReports(body);
+  if (violations.length === 0 && body !== null && typeof body === "object") {
+    // Body parsed as JSON but matched neither the Reporting API array format
+    // nor the legacy csp-report object format.
+    const shape = Array.isArray(body) ? "array" : "object";
+    const keys = !Array.isArray(body) ? Object.keys(body as Record<string, unknown>).join(", ") || "(no keys)" : undefined;
+    console.warn(
+      `[csp] schema validation failed: unrecognised report shape (${shape}${keys ? `; keys: ${keys}` : ""})`
+    );
+    return new Response(null, { status: 204 });
+  }
+  for (const v of violations) {
     if (EXTENSION_SCHEMES.test(v.blockedUri) || EXTENSION_SCHEMES.test(v.sourceFile ?? "")) continue;
     const summary = `csp-violation ${v.disposition || "?"} ${v.directive} blocked=${redact(v.blockedUri)} doc=${redact(v.documentUri)}`;
     console.warn(`[csp] ${summary}${v.sourceFile ? ` src=${redact(v.sourceFile)}:${v.line ?? "?"}` : ""}`);
     void captureMessage(summary, v.disposition === "enforce" ? "error" : "warning");
   }
   return new Response(null, { status: 204 });
+}
 }
