@@ -103,16 +103,38 @@ export async function getSession(req: Request): Promise<Response> {
     return json(info(null), 200, cookies);
   }
 
-  const me = await fetch(`${upstreamUrl()}/api/v1/auth/me`, {
-    headers: { authorization: `Bearer ${ctx.session.t}` },
-    cache: "no-store",
-  }).catch(() => null);
+  // Validate the session token with the backend.
+  //   - Backend unreachable → 502 so the caller knows this is an infra problem,
+  //     not a sign-out. The session cookie is preserved.
+  //   - Backend returns 401 → the token is revoked; clear the cookie and return
+  //     unauthenticated (200, not 401, because the BFF call itself succeeded).
+  //   - Backend returns any other non-2xx → propagate the status with a JSON
+  //     body that includes the upstream status for triage, without leaking the
+  //     backend response body (it may contain internal detail).
+  //   - Backend returns 2xx → session is live; return session info normally.
+  let me: Response | null;
+  try {
+    me = await fetch(`${upstreamUrl()}/api/v1/auth/me`, {
+      headers: { authorization: `Bearer ${ctx.session.t}` },
+      cache: "no-store",
+    });
+  } catch {
+    // Network-level failure: DNS, TCP reset, timeout, etc.
+    return json({ error: "Backend unavailable", upstreamStatus: null }, 502, cookies);
+  }
 
-  if (me && me.status === 401) {
+  if (me.status === 401) {
     cookies.push(clearSession(ctx));
     return json(info(null), 200, cookies);
   }
-  // Backend unreachable: report the cookie's view rather than logging the user out.
+
+  if (!me.ok) {
+    // Backend is reachable but returned an unexpected error. Surface the status
+    // so on-call can distinguish a backend 500 from a 503/429 without having
+    // to dig through backend logs.
+    return json({ error: "Backend session check failed", upstreamStatus: me.status }, 502, cookies);
+  }
+
   return json(info(ctx.session), 200, cookies);
 }
 
@@ -198,6 +220,12 @@ export async function proxy(req: Request, segments: string[]): Promise<Response>
     const value = req.headers.get(name);
     if (value) headers.set(name, value);
   }
+  // Ensure content-length is never forwarded to the upstream. The body may be
+  // rewritten (re-serialised, filtered, or otherwise transformed) before it
+  // reaches the upstream fetch call, so the client's original value is likely
+  // wrong. Dropping it here lets the runtime compute the correct length from
+  // the actual body it sends.
+  headers.delete("content-length");
   const attachToken = decision.auth !== "none" && !!ctx.session;
   if (attachToken) headers.set("authorization", `Bearer ${ctx.session!.t}`);
 
