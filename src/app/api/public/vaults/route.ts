@@ -64,10 +64,15 @@ function clientIp(req: NextRequest): string {
   return req.headers.get('x-real-ip') ?? 'unknown';
 }
 
-function parseLimit(raw: string | null): number {
-  const n = Number.parseInt(raw ?? '', 10);
-  if (!Number.isFinite(n) || n <= 0) return DEFAULT_LIMIT;
-  return Math.min(n, MAX_LIMIT);
+/**
+ * Returns the parsed limit, or null if the caller supplied an invalid value.
+ * null signals the GET handler to return a 400 rather than silently clamping.
+ */
+function parseLimit(raw: string | null): number | null {
+  if (raw === null || raw === '') return DEFAULT_LIMIT;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0 || n > MAX_LIMIT) return null;
+  return n;
 }
 
 function encodeCursor(offset: number): string {
@@ -127,7 +132,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const limit = parseLimit(req.nextUrl.searchParams.get('limit'));
+  const rawLimit = req.nextUrl.searchParams.get('limit');
+  const limit = parseLimit(rawLimit);
+  if (limit === null) {
+    return NextResponse.json(
+      { error: 'invalid_request', message: '`limit` must be an integer between 1 and 100' },
+      { status: 400, headers: corsHeaders() },
+    );
+  }
   const offset = decodeCursor(req.nextUrl.searchParams.get('cursor'));
   const cacheKey = `list:${limit}:${offset}`;
 

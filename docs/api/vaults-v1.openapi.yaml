@@ -202,6 +202,15 @@ components:
             historicalEpochs:
               type: array
               items: { $ref: "#/components/schemas/EpochRecord" }
+            strategies:
+              type: array
+              description: "Active option strategies currently deployed by the vault. Optional — absent when the vault has not yet deployed for the current epoch."
+              items:
+                type: object
+                required: [name, description]
+                properties:
+                  name: { type: string }
+                  description: { type: string }
             userPosition:
               nullable: true
               allOf:
