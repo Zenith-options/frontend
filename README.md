@@ -35,10 +35,36 @@ the payoff diagram still uses local math (`src/lib/payoff.ts`).
 
 ```bash
 npm install
-cp .env.local.example .env.local   # see "Environment" below
+cp .env.local.example .env.local   # fill in values before the next step
 npm run dev
 # http://localhost:3000
 ```
+
+`.env.local.example` is the authoritative list of every variable the app reads.
+Copy it to `.env.local` and fill in values before running `npm run dev` —
+`src/env.ts` validates variables at startup and will throw if required ones
+are missing.
+
+**Required for local development** (all others default to safe values or are
+optional features):
+
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_STELLAR_NETWORK` | `testnet` or `mainnet` |
+| `SOROBAN_RPC_URLS` | Comma-separated Soroban RPC endpoint(s). Required in production; defaults to the public testnet RPC in development. |
+
+**Required in production only** (startup fails without these):
+
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | Backend base URL |
+| `NEXT_PUBLIC_STELLAR_NETWORK` | Must be `testnet` or `mainnet` |
+| `NEXT_PUBLIC_STELLAR_TESTNET_CONTRACT_ID` / `NEXT_PUBLIC_STELLAR_MAINNET_CONTRACT_ID` | Contract strkey for the selected network |
+| `SOROBAN_RPC_URLS` | At least one Soroban RPC endpoint |
+
+Everything else in `.env.local.example` is optional: anchor URLs, feature
+flags, Sentry DSN, OpenTelemetry, rate-limit overrides, and signer config.
+Leave optional variables commented out to use their defaults.
 
 Configuration is validated in `src/env.ts`. Local development defaults to the
 backend at `http://localhost:8081`; production builds require an API URL,

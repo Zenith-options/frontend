@@ -11,6 +11,7 @@ pipeline, and branch protection setup.
 - [CI pipeline](#ci-pipeline)
 - [Bundle budgets](#bundle-budgets)
 - [Branch protection setup](#branch-protection-setup)
+- [Next.js config file (next.config.js is live)](#nextjs-config-file-nextconfigjs-is-live)
 - [TypeScript strictness](#typescript-strictness)
 - [Reporting a security vulnerability](#reporting-a-security-vulnerability)
 
@@ -53,8 +54,9 @@ alerts/live spot to actually load.
 | `npm run lint` | ESLint via `next lint` |
 | `npm run lint:ci` | Lint with `--max-warnings 0` (used in CI) |
 | `npm run typecheck` | `tsc --noEmit` — no emit, just types |
-| `npm test` | Jest unit tests |
-| `npm run test:ci` | Jest with coverage (used in CI) |
+| `npm test` | Vitest — runs all unit suites once (same as `vitest run`) |
+| `npm run test:watch` | Vitest in watch mode — re-runs affected suites on file save |
+| `npm run test:ci` | Vitest with coverage, JSON + lcov reporters (used in CI) |
 | `npm run build` | Production build (`next build`) |
 | `npm run size` | Bundle budget check against `.next/` output |
 | `npm run api:check` | Validate backend fixture contracts against Zod schemas |
@@ -239,6 +241,30 @@ gh api \
 }
 EOF
 ```
+
+---
+
+## Next.js config file (next.config.js is live)
+
+The repo root contains three `next.config.*` files:
+
+| File | Status |
+|---|---|
+| `next.config.js` | **Live — this is the file Next.js loads** |
+| `next.config.mjs` | Dead (not loaded) |
+| `next.config.ts` | Dead (not loaded) |
+
+Next.js 14 resolves config files in this order:
+`next.config.js` → `next.config.mjs` → `next.config.ts`
+
+Because `next.config.js` exists, it wins and the other two are never read.
+If you need to change build config — headers, redirects, webpack, Sentry
+wrapping, `next-intl` plugin — edit **`next.config.js`** only.
+
+The `.mjs` file contains only the MDX plugin setup and the `.ts` file
+contains only a worker chunk-loading workaround. Neither is active. They
+are kept for reference but should not be edited; if their settings are
+needed they should be merged into `next.config.js`.
 
 ---
 
