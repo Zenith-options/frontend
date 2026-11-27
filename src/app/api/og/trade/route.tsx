@@ -14,8 +14,19 @@ const fonts = Promise.all([
 
 const NO_STORE = { "cache-control": "no-store" };
 
+// Documented id format: base64url payload + "." + base64url signature.
+// Characters outside [A-Za-z0-9_\-.] (including "/") are never valid, so
+// reject them immediately rather than letting verifyShareId silently return
+// null — this gives the caller a 400 instead of a 400-with-no-reason.
+const VALID_ID_RE = /^[A-Za-z0-9_.\-]+$/;
+
 export async function GET(req: Request) {
-  const id = new URL(req.url).searchParams.get("id") ?? "";
+  const raw = new URL(req.url).searchParams.get("id") ?? "";
+  // Normalise: strip any trailing slashes that a sloppy client may append.
+  const id = raw.replace(/\/+$/, "");
+  if (!id || !VALID_ID_RE.test(id)) {
+    return new Response("Invalid share id", { status: 400, headers: NO_STORE });
+  }
   let secret: string;
   try {
     secret = getSigningSecret();
