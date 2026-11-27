@@ -173,6 +173,15 @@ if (require.main === module) {
     assignment,
   });
   const json = JSON.stringify(result, null, 2) + "\n";
-  if (flags.out) writeFileSync(flags.out, json);
-  else process.stdout.write(json);
+  if (flags.out) {
+    try {
+      writeFileSync(flags.out, json);
+    } catch (err) {
+      console.error(`[backtest] failed to write output file: ${err}`);
+      process.exit(1);
+    }
+    console.log(`[backtest] wrote ${flags.out}`);
+  } else {
+    process.stdout.write(json);
+  }
 }
