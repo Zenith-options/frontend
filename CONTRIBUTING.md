@@ -50,8 +50,8 @@ alerts/live spot to actually load.
 | Command | What it does |
 |---|---|
 | `npm run dev` | Next.js dev server with hot reload |
-| `npm run lint` | ESLint via `next lint` |
-| `npm run lint:ci` | Lint with `--max-warnings 0` (used in CI) |
+| `npm run lint` | ESLint via `next lint` — advisory, warnings are allowed |
+| `npm run lint:ci` | Lint with `--max-warnings 0` (CI gate — warnings are failures) |
 | `npm run typecheck` | `tsc --noEmit` — no emit, just types |
 | `npm test` | Jest unit tests |
 | `npm run test:ci` | Jest with coverage (used in CI) |
@@ -59,6 +59,61 @@ alerts/live spot to actually load.
 | `npm run size` | Bundle budget check against `.next/` output |
 | `npm run api:check` | Validate backend fixture contracts against Zod schemas |
 | `npm run storybook` | Storybook dev server at `:6006` |
+
+### `npm run lint` vs `npm run lint:ci`
+
+These two scripts run the same ESLint configuration but with different
+strictness:
+
+| Script | Command | Warnings |
+|---|---|---|
+| `npm run lint` | `next lint` | Allowed — exits zero even with warnings |
+| `npm run lint:ci` | `next lint --max-warnings 0` | Treated as errors — exits non-zero |
+
+**`npm run lint:ci` is the CI gate.** The `lint` job in `ci.yml` runs
+`npm run lint:ci`, so a PR that introduces any ESLint warning will fail CI
+even if it passes locally with `npm run lint`.
+
+Before opening a PR, reproduce the CI check exactly:
+
+```bash
+npm run lint:ci
+```
+
+If that exits non-zero, fix or suppress (with an inline `eslint-disable`
+comment and a reason) every reported issue before pushing.
+
+---
+
+## Scripts
+
+### `scripts/ts-ext-loader.mjs` and `scripts/register.mjs`
+
+These two files implement a Node.js ES module loader hook that resolves
+extensionless relative imports (e.g. `import foo from "./foo"`) to their
+`.ts` counterpart at runtime. This lets TypeScript source be executed directly
+by `node --test` without a prior compile step.
+
+**How to use them**
+
+Pass `register.mjs` via Node's `--import` flag when running TypeScript files
+directly under Node:
+
+```bash
+node --import ./scripts/register.mjs --test src/**/*.test.ts
+```
+
+`register.mjs` calls `register()` from `node:module` to activate
+`ts-ext-loader.mjs` as the resolver; you should never need to reference
+`ts-ext-loader.mjs` directly.
+
+**Current status**
+
+As of this writing neither file is wired up in `package.json` scripts or any
+CI workflow — `npm test` uses Vitest, which handles TypeScript natively.
+They are retained for contributors who want to run Node's built-in test runner
+against `.ts` files. If you add such a workflow, update the relevant
+`package.json` script to include `--import ./scripts/register.mjs`.
 
 ---
 
